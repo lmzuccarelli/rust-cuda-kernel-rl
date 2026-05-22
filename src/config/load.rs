@@ -1,0 +1,34 @@
+use serde_derive::{Deserialize, Serialize};
+use std::fs::File;
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct Parameters {
+    pub name: String,
+    pub log_level: String,
+    pub gpu_server_port: usize,
+    pub compile_server_port: usize,
+    pub controller_server_port: usize,
+    pub api_key_file: String,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct WorkItem {
+    pub name: String,
+    pub gpu_arch: String,
+    pub prompt: Option<String>,
+}
+
+pub trait ConfigInterface {
+    fn read(&self, dir: String) -> Result<Parameters, Box<dyn std::error::Error>>;
+}
+
+#[derive(Debug, Clone)]
+pub struct ImplConfigInterface {}
+
+impl ConfigInterface for ImplConfigInterface {
+    fn read(&self, name: String) -> Result<Parameters, Box<dyn std::error::Error>> {
+        let json_data = File::open(&name)?;
+        let params = serde_json::from_reader(json_data)?;
+        Ok(params)
+    }
+}

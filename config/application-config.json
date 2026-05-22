@@ -1,0 +1,13 @@
+{
+	"name": "rust-cuda-kernel-rl",
+	"log_level": "debug",
+	"gpu_server_port": 3202,
+  "compile_server_port": 3201,
+  "controller_server_port": 3200,
+  "api_key_file": "home/lzuccarelli/tokens",
+  "work_items": [
+    { "name": "mat_mul", 
+      "gpu_arch": "86"
+    }
+  ]
+}
