@@ -57,3 +57,17 @@ The gpu service needs a gpu, this is where the compiled binary will be executed 
 - This process is repeated until the set trajectory value is reached.
 - A simple workflow cli is used for the workflow controll.
 
+
+## Cavaets
+
+### Update the sudo user in the /etc/sudoers file 
+
+```
+myuser ALL=(ALL) NOPASSWD: ALL
+```
+
+This disables asking for a password (ncu needs elevated privileges) refer to [permissions](https://developer.nvidia.com/nvidia-development-tools-solutions-err_nvgpuctrperm-permission-issue-performance-counters#AllUsersTag)
+
+### Ensure LD_LIBRARY_PATH envar is set 
+
+export LD_LIBRARY_PATH=/usr/local/cuda-<version>/lib64:/usr/local/cuda/extras/CUPTI/lib64

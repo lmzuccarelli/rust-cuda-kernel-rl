@@ -10,7 +10,6 @@ use hyper_util::rt::TokioIo;
 use mimalloc::MiMalloc;
 use std::collections::HashMap;
 use std::env;
-use std::fs;
 use std::net::{Ipv4Addr, SocketAddr};
 use std::sync::Mutex;
 use tokio::net::TcpListener;
@@ -95,26 +94,14 @@ fn main() {
             }
             // parameters used in service
             let mut hm: HashMap<String, String> = HashMap::new();
-            // read api key from disk
-            let res_content = fs::read_to_string(parameters.api_key_file);
-            match res_content {
-                Ok(content) => {
-                    hm.insert(
-                        "api_key".to_string(),
-                        content.trim().to_string().replace("\n", ""),
-                    );
-                }
-                Err(e) => {
-                    log::error!("[main] api key {}", e);
-                    std::process::exit(1);
-                }
-            }
 
             // get gpu info
             // this determines the number of concurrent kernels to evaluate
-            let mut impl_shell_res = ShellExecute::run("nvidia-smi", vec!["--list-gpus"]);
+            let impl_shell_res = ShellExecute::run("nvidia-smi", vec!["--list-gpus"]);
             match impl_shell_res {
                 Ok(gpus) => {
+                    // preserve output
+                    println!("{}", gpus);
                     hm.insert("gpus".to_string(), gpus);
                 }
                 Err(e) => {
@@ -125,22 +112,10 @@ fn main() {
                     std::process::exit(1);
                 }
             }
-            impl_shell_res = ShellExecute::run(
-                "nvidia-smi",
-                vec!["nvidia-smi --query-gpu=compute_cap --format=csv"],
-            );
 
-            match impl_shell_res {
-                Ok(arch) => {
-                    let values: Vec<_> = arch.split("\n").collect();
-                    let s_val = values[values.len() - 1].parse::<f32>().unwrap_or(0.0) * 10.0;
-                    hm.insert("arch".to_string(), format!("{}", s_val));
-                }
-                Err(e) => {
-                    log::error!("[main] could not find gpu architecture {}", e);
-                    std::process::exit(1);
-                }
-            }
+            let gpu_arch_res = ShellExecute::run("nvidia-smi", vec!["--query-gpu=compute_cap"]);
+            // preserve output
+            println!("{}", gpu_arch_res.unwrap_or("no arch".to_string()));
 
             *MAP_LOOKUP.lock().unwrap() = Some(hm.clone());
             ("gpu".to_string(), parameters.gpu_server_port)
