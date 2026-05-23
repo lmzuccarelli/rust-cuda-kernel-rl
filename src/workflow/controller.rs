@@ -1,6 +1,7 @@
 use crate::config::load::Parameters;
 use crate::workflow::api_client::{process_get_call, process_post_call};
 use custom_logger as log;
+use std::fs;
 
 pub trait ControllerInterface {
     async fn get_health(paramaters: Parameters) -> Result<(), Box<dyn std::error::Error>>;
@@ -26,7 +27,9 @@ impl ControllerInterface for Controller {
 
     async fn get_baseline(parameters: Parameters) -> Result<(), Box<dyn std::error::Error>> {
         for item in parameters.workflow_batch.iter() {
-            let payload = format!(r##"{{ "name": "{}", "gpu_arch": "{} }}"##, item, "86");
+            // ensure logs directory is created for each cuda-kernel
+            fs::create_dir_all(format!("logs/{}", item))?;
+            let payload = format!(r##"{{ "name": "{}", "gpu_arch": "{}" }}"##, item, "86");
             // first call the compile endpoint
             let mut url = format!("{}/v1/compile", parameters.compile_server_url);
             process_post_call(

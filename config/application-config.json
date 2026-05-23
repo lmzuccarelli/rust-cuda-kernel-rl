@@ -3,7 +3,7 @@
 	"log_level": "debug",
 	"gpu_server_url": "http://192.168.1.221:3202",
   "compile_server_url": "http://192.168.1.221:3201",
-  "llm_server_url": "http://192.168.1.178:3200",
+  "llm_server_url": "http://192.168.1.19:3200",
   "workflow_batch": [
     "level1/001_Square_matrix_multiplication"
   ]
