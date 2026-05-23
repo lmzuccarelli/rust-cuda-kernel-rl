@@ -62,11 +62,9 @@ impl ProfileInterface for Profile {
             return Err(Box::from(stderr.to_string()));
         }
 
-        // preserve output
-        // println!("{}", stdout);
         // write the final report to disk
-        fs::write("output.profile", stdout)?;
+        fs::write("output.profile", stdout.clone())?;
 
-        Ok("exit => 0".to_string())
+        Ok(stdout)
     }
 }

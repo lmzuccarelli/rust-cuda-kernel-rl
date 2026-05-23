@@ -96,6 +96,6 @@ impl CompileInterface for Compile {
             return Err(Box::from(stderr));
         }
 
-        Ok("exit => 0".to_string())
+        Ok(stdout)
     }
 }

@@ -30,6 +30,6 @@ impl ExecuteInterface for Execute {
         // preserve output
         println!("{}", stdout);
 
-        Ok("exit => 0".to_string())
+        Ok(stdout)
     }
 }
