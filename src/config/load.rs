@@ -5,10 +5,10 @@ use std::fs::File;
 pub struct Parameters {
     pub name: String,
     pub log_level: String,
-    pub gpu_server_port: usize,
-    pub compile_server_port: usize,
-    pub controller_server_port: usize,
-    pub api_key_file: String,
+    pub gpu_server_url: String,
+    pub compile_server_url: String,
+    pub llm_server_url: String,
+    pub workflow_batch: Vec<String>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]

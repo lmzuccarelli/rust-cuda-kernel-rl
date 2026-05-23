@@ -1,7 +1,9 @@
 use crate::cli::schema::{Cli, Commands};
+use crate::config::load::Parameters;
 use crate::config::load::{ConfigInterface, ImplConfigInterface};
 use crate::routers::*;
 use crate::utils::shell::{ShellExecute, ShellExecuteInterface};
+use crate::workflow::controller::{Controller, ControllerInterface};
 use clap::Parser;
 use custom_logger as log;
 use hyper::server::conn::http1;
@@ -20,6 +22,7 @@ mod inference;
 mod kernel;
 mod routers;
 mod utils;
+mod workflow;
 
 #[global_allocator]
 static GLOBAL: MiMalloc = MiMalloc;
@@ -59,8 +62,8 @@ fn main() {
         std::process::exit(1);
     }
 
-    let (name, port) = match &args.command {
-        Some(Commands::Llm {}) => ("llm".to_string(), parameters.controller_server_port),
+    let (sub_command, parameters) = match &args.command {
+        Some(Commands::Llm {}) => ("llm".to_string(), parameters.clone()),
         Some(Commands::Gpu {}) => {
             // check for cuda in PATH and LD_LIBRARY_PATH envars
             match env::var("PATH") {
@@ -118,7 +121,7 @@ fn main() {
             println!("{}", gpu_arch_res.unwrap_or("no arch".to_string()));
 
             *MAP_LOOKUP.lock().unwrap() = Some(hm.clone());
-            ("gpu".to_string(), parameters.gpu_server_port)
+            ("gpu".to_string(), parameters)
         }
         Some(Commands::Compile {}) => {
             let impl_shell_res = ShellExecute::run("nvcc", vec!["--version"]);
@@ -131,25 +134,21 @@ fn main() {
                     std::process::exit(1);
                 }
             }
-            ("compile".to_string(), parameters.compile_server_port)
+            ("compile".to_string(), parameters)
         }
+        Some(Commands::Controller {}) => ("controller".to_string(), parameters),
+
         None => {
             log::error!(
-                "please ensure you use the correct sub-command (available sub-commands are one of gpu-server,compile-server,controller)"
+                "please ensure you use the correct sub-command (available sub-commands are one of gpu,compile,llm,controller)"
             );
             std::process::exit(1);
         }
     };
 
-    log::info!("application : {}", env!("CARGO_PKG_NAME"));
-    log::info!("author      : {}", env!("CARGO_PKG_AUTHORS"));
-    log::info!("version     : {}", env!("CARGO_PKG_VERSION"));
-    log::info!("server      : {}", name);
-    log::info!("port        : {}", port);
-
-    let result = run_server(name, port);
+    let result = execute(sub_command.clone(), parameters);
     match result {
-        Ok(_) => log::info!("[main] service shutdown successfully"),
+        Ok(_) => log::info!("[main] terminating process {}", sub_command),
         Err(err) => {
             log::error!("{}", err);
             std::process::exit(1);
@@ -158,50 +157,100 @@ fn main() {
 }
 
 #[tokio::main]
-pub async fn run_server(name: String, port: usize) -> Result<(), Box<dyn std::error::Error>> {
-    let addr = SocketAddr::new(Ipv4Addr::new(0, 0, 0, 0).into(), port as u16);
-    log::info!("[run_server] starting to serve on http://{}", addr);
-    let listener = TcpListener::bind(addr).await?;
-    match name.as_str() {
-        "compile" => loop {
-            let (stream, _) = listener.accept().await?;
-            let io = TokioIo::new(stream);
-            tokio::task::spawn(async move {
-                if let Err(err) = http1::Builder::new()
-                    .serve_connection(io, service_fn(compiler::endpoints))
-                    .await
-                {
-                    log::error!("[run_server] error serving connection: {:?}", err);
-                }
-            });
-        },
-        "gpu" => loop {
-            let (stream, _) = listener.accept().await?;
-            let io = TokioIo::new(stream);
-            tokio::task::spawn(async move {
-                if let Err(err) = http1::Builder::new()
-                    .serve_connection(io, service_fn(gpu::endpoints))
-                    .await
-                {
-                    log::error!("[run_server] error serving connection: {:?}", err);
-                }
-            });
-        },
-        "llm" => loop {
-            let (stream, _) = listener.accept().await?;
-            let io = TokioIo::new(stream);
-            tokio::task::spawn(async move {
-                if let Err(err) = http1::Builder::new()
-                    .serve_connection(io, service_fn(llm::endpoints))
-                    .await
-                {
-                    log::error!("[run_server] error serving connection: {:?}", err);
-                }
-            });
-        },
-        &_ => {
-            log::error!("[run_server] invalid service");
-            std::process::exit(1);
+pub async fn execute(
+    command: String,
+    parameters: Parameters,
+) -> Result<(), Box<dyn std::error::Error>> {
+    log::info!("application : {}", env!("CARGO_PKG_NAME"));
+    log::info!("author      : {}", env!("CARGO_PKG_AUTHORS"));
+    log::info!("version     : {}", env!("CARGO_PKG_VERSION"));
+    log::info!("server      : {}", command);
+
+    // check if we are in workflow controller mode or launch service mode
+    if command == "controller" {
+        // check health endpoints
+        Controller::get_health(parameters.clone()).await?;
+        // endpoints are good lets get the cuda-kernel baseline
+        Controller::get_baseline(parameters).await?;
+        Ok(())
+    } else {
+        let port = get_port(command.clone(), parameters)?;
+        log::info!("port        : {}", port);
+        let addr = SocketAddr::new(Ipv4Addr::new(0, 0, 0, 0).into(), port);
+        log::info!("[execute] starting to serve on http://{}", addr);
+        let listener = TcpListener::bind(addr).await?;
+        match command.as_str() {
+            "compile" => loop {
+                let (stream, _) = listener.accept().await?;
+                let io = TokioIo::new(stream);
+                tokio::task::spawn(async move {
+                    if let Err(err) = http1::Builder::new()
+                        .serve_connection(io, service_fn(compiler::endpoints))
+                        .await
+                    {
+                        log::error!("[execute] error serving connection: {:?}", err);
+                    }
+                });
+            },
+            "gpu" => loop {
+                let (stream, _) = listener.accept().await?;
+                let io = TokioIo::new(stream);
+                tokio::task::spawn(async move {
+                    if let Err(err) = http1::Builder::new()
+                        .serve_connection(io, service_fn(gpu::endpoints))
+                        .await
+                    {
+                        log::error!("[execute] error serving connection: {:?}", err);
+                    }
+                });
+            },
+            "llm" => loop {
+                let (stream, _) = listener.accept().await?;
+                let io = TokioIo::new(stream);
+                tokio::task::spawn(async move {
+                    if let Err(err) = http1::Builder::new()
+                        .serve_connection(io, service_fn(llm::endpoints))
+                        .await
+                    {
+                        log::error!("[execute] error serving connection: {:?}", err);
+                    }
+                });
+            },
+            &_ => {
+                log::error!("[execute] invalid service");
+                std::process::exit(1);
+            }
         }
     }
+}
+
+// utility
+
+fn get_port(command: String, parameters: Parameters) -> Result<u16, Box<dyn std::error::Error>> {
+    let port = match command.as_str() {
+        "compile" => parameters
+            .compile_server_url
+            .split(":")
+            .nth(2)
+            .unwrap_or("3201")
+            .parse::<u16>()?,
+        "gpu" => parameters
+            .gpu_server_url
+            .split(":")
+            .nth(2)
+            .unwrap_or("3202")
+            .parse::<u16>()?,
+        "llm" => parameters
+            .llm_server_url
+            .split(":")
+            .nth(2)
+            .unwrap_or("3200")
+            .parse::<u16>()?,
+        &_ => {
+            return Err(Box::from(
+                "invalid command (valid commands are compile,gpu,llm)",
+            ));
+        }
+    };
+    Ok(port)
 }

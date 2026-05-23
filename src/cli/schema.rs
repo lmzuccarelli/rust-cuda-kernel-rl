@@ -28,4 +28,6 @@ pub enum Commands {
     Gpu {},
     /// used to start a compile server (doesn't need gpu's)
     Compile {},
+    /// cli workflow controller
+    Controller {},
 }
