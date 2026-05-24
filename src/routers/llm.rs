@@ -13,11 +13,11 @@ pub async fn endpoints(req: Request<Incoming>) -> Result<Response<Full<Bytes>>, 
         Method::POST => match request {
             x if x.contains("/v1/prompt") => {
                 let data = req.into_body().collect().await?.to_bytes();
-                let work_item_res = serde_json::from_slice(&data);
-                match work_item_res {
-                    Ok(work_item) => {
-                        let workflow_res = Llm::run(work_item).await;
-                        match workflow_res {
+                let prompt_res = String::from_utf8(data.to_vec());
+                match prompt_res {
+                    Ok(prompt) => {
+                        let result = Llm::run(prompt).await;
+                        match result {
                             Ok(content) => {
                                 *response.body_mut() = Full::from(content);
                             }

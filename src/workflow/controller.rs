@@ -76,8 +76,7 @@ impl ControllerInterface for Controller {
             .await?;
 
             // set the initial prompt for the llm
-            let prompt = get_profile_prompt(code, ncu_report);
-            let llm_payload = format!(r##"{{ "prompt": "{}" }}"##, prompt.replace("\n", ""));
+            let prompt = get_profile_prompt(code, ncu_report).replace("\n", "");
 
             // call the llm endpoint
             url = format!("{}/v1/prompt", parameters.llm_server_url);
@@ -85,7 +84,7 @@ impl ControllerInterface for Controller {
                 item.to_string(),
                 url,
                 "baseline_llm_response.txt".to_string(),
-                llm_payload,
+                prompt,
             )
             .await?;
         }

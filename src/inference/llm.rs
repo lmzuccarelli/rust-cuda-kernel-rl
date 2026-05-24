@@ -1,27 +1,20 @@
-use crate::config::load::WorkItem;
 use custom_logger as log;
 use std::process::Command;
 use std::time::Instant;
 
 pub trait LlmInterface {
-    async fn run(work_item: WorkItem) -> Result<String, Box<dyn std::error::Error>>;
+    async fn run(prompt: String) -> Result<String, Box<dyn std::error::Error>>;
 }
 
 pub struct Llm {}
 
 impl LlmInterface for Llm {
-    async fn run(work_item: WorkItem) -> Result<String, Box<dyn std::error::Error>> {
+    async fn run(prompt: String) -> Result<String, Box<dyn std::error::Error>> {
         log::debug!("[run] executing llm inference endpoint");
         let start = Instant::now();
 
         let output = Command::new("claude")
-            .args(vec![
-                "-p",
-                &work_item
-                    .prompt
-                    .clone()
-                    .unwrap_or("default prompt".to_string()),
-            ])
+            .args(vec!["-p", &prompt])
             .output()
             .expect("failed to spawn shell");
 
@@ -37,6 +30,6 @@ impl LlmInterface for Llm {
             return Err(Box::from(stderr));
         }
 
-        Ok("exit => 0".to_string())
+        Ok(stdout)
     }
 }
