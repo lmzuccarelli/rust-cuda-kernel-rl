@@ -1,4 +1,3 @@
-use crate::MAP_LOOKUP;
 use crate::kernel::compile::{Compile, CompileInterface};
 use custom_logger as log;
 use http::{Method, Request, Response, StatusCode};
@@ -17,8 +16,33 @@ pub async fn endpoints(req: Request<Incoming>) -> Result<Response<Full<Bytes>>, 
                 let work_item_res = serde_json::from_slice(&data);
                 match work_item_res {
                     Ok(work_item) => {
-                        let workflow_res = Compile::run(work_item).await;
-                        match workflow_res {
+                        let compile_res = Compile::run(work_item).await;
+                        match compile_res {
+                            Ok(content) => {
+                                *response.body_mut() = Full::from(content);
+                            }
+                            Err(err) => {
+                                log::error!("[endpoints] {}", err);
+                                *response.status_mut() = StatusCode::INTERNAL_SERVER_ERROR;
+                                *response.body_mut() =
+                                    Full::from(format!("[endpoints] error : {}\n", err));
+                            }
+                        }
+                    }
+                    Err(err) => {
+                        log::error!("[endpoints] {}", err);
+                        *response.status_mut() = StatusCode::INTERNAL_SERVER_ERROR;
+                        *response.body_mut() = Full::from(format!("[endpoints] error : {}\n", err));
+                    }
+                }
+            }
+            x if x.contains("/v1/cuda-kernel") => {
+                let data = req.into_body().collect().await?.to_bytes();
+                let work_item_res = serde_json::from_slice(&data);
+                match work_item_res {
+                    Ok(work_item) => {
+                        let content_res = Compile::cuda_kernel(work_item).await;
+                        match content_res {
                             Ok(content) => {
                                 *response.body_mut() = Full::from(content);
                             }
@@ -58,27 +82,4 @@ pub async fn endpoints(req: Request<Incoming>) -> Result<Response<Full<Bytes>>, 
         }
     };
     Ok(response)
-}
-
-#[allow(unused)]
-fn get_item(name: &str) -> Result<String, Box<dyn std::error::Error>> {
-    let hm_guard = MAP_LOOKUP.lock().map_err(|_| "mutex lock failed")?;
-    let value = match hm_guard.as_ref() {
-        Some(res) => {
-            let item_value = res.get(name);
-            match item_value {
-                Some(final_value) => final_value,
-                None => {
-                    return Err(Box::from(format!(
-                        "[get_item] hashmap lookup {} not found",
-                        name
-                    )));
-                }
-            }
-        }
-        None => {
-            return Err(Box::from("[get_item] error validating hashmap lookup"));
-        }
-    };
-    Ok(value.to_string())
 }

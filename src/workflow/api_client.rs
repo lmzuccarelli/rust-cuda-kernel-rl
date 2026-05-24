@@ -27,7 +27,7 @@ pub async fn process_post_call(
         StatusCode::OK => {
             // only if we have success can we then save the document
             let doc_content = String::from_utf8(response.to_vec())?;
-            fs::write(format!("logs/{}/{}.txt", name, title), doc_content.clone())?;
+            fs::write(format!("logs/{}/{}", name, title), doc_content.clone())?;
             doc_content
         }
         _ => {

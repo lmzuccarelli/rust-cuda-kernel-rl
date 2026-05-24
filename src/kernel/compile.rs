@@ -8,6 +8,7 @@ use std::time::Instant;
 
 pub trait CompileInterface {
     async fn run(work_item: WorkItem) -> Result<String, Box<dyn std::error::Error>>;
+    async fn cuda_kernel(work_item: WorkItem) -> Result<String, Box<dyn std::error::Error>>;
 }
 
 pub struct Compile {}
@@ -97,5 +98,10 @@ impl CompileInterface for Compile {
         }
 
         Ok(stdout)
+    }
+
+    async fn cuda_kernel(work_item: WorkItem) -> Result<String, Box<dyn std::error::Error>> {
+        let kernel = fs::read_to_string(format!("kernelbench-cuda/{}/init.cu", work_item.name))?;
+        Ok(kernel)
     }
 }

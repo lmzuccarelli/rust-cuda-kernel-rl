@@ -1,6 +1,6 @@
 [package]
 name = "rust-cuda-kernel-rl"
-version = "0.1.11"
+version = "0.1.12"
 edition = "2024"
 authors = ["Luigi Mario Zuccarelli<>luigizuccarelli@gmail.com"]
 
@@ -17,7 +17,7 @@ async-trait = "0.1.89"
 hyper = "1.9.0"
 reqwest = "0.12.23"
 orx-parallel = "2"
-# openssl = { version = "0.10.80", features = ["vendored"] }
+openssl = { version = "0.10.80", features = ["vendored"] }
 hyper-util = { version = "0.1.20" ,  default-features = false, features = ["client-legacy","tokio", "server-auto" ] }
 mimalloc = { version = "*", features = ["v3"] }
 regex = "1.12.3"

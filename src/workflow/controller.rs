@@ -35,7 +35,7 @@ impl ControllerInterface for Controller {
             process_post_call(
                 item.to_string(),
                 url,
-                "baseline_compile".to_string(),
+                "baseline_compile.txt".to_string(),
                 payload.clone(),
             )
             .await?;
@@ -44,16 +44,26 @@ impl ControllerInterface for Controller {
             process_post_call(
                 item.to_string(),
                 url,
-                "baseline_execute".to_string(),
+                "baseline_execute.txt".to_string(),
                 payload.clone(),
             )
             .await?;
+            // if the compile succeeds downlaod the cuda kernel (used to embedd in llm prompt)
+            url = format!("{}/v1/cuda-kernel", parameters.gpu_server_url);
+            process_post_call(
+                item.to_string(),
+                url,
+                "init.cu".to_string(),
+                payload.clone(),
+            )
+            .await?;
+
             // call the nvidia ncu profile endpoint
             url = format!("{}/v1/profile", parameters.gpu_server_url);
             process_post_call(
                 item.to_string(),
                 url,
-                "baseline_profile".to_string(),
+                "baseline_profile.txt".to_string(),
                 payload,
             )
             .await?;

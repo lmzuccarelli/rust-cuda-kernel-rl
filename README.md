@@ -51,9 +51,9 @@ The gpu service needs a gpu, this is where the compiled binary will be executed 
 
 - The user will initiate a workflow via the various service endpoints using a json payload to indicate the kernel/s to be compiled, executed and profiled.
 - The compiler process is used to compile the cuda-kernel/s.
-- The gpu process is used tp get an initial baseline by executing the initial kernel and then profiling it using ncu for the Elpased Cycles.
+- The gpu process is used to get an initial baseline by executing the initial kernel and then profiling it using ncu for the Elpased Cycles.
 - The llm porcess will have all the results from the ncu insights (referencing the Speed of Light results), it uses a known database of problems and recommended optimisations with the cuda-kernel code as reference.
-- The trajectory with the highest (lowest Elapsed Cycles as a percentage from the baseline) score will be saved together with the releavnt cuda-kernel optimized code.
+- The trajectory with the best score (lowest Elapsed Cycles as a percentage from the baseline) will be saved together with the releavnt cuda-kernel optimized code.
 - This process is repeated until the set trajectory value is reached.
 - A simple workflow cli is used for the workflow controll.
 
@@ -70,4 +70,8 @@ This disables asking for a password (ncu needs elevated privileges) refer to [pe
 
 ### Ensure LD_LIBRARY_PATH envar is set 
 
+Before executing the gpu or compiler services ensure the LD_LIBRARY_PATH envar is set correctly (link to cuda lib64 and CUPTI)
+
+```
 export LD_LIBRARY_PATH=/usr/local/cuda-<version>/lib64:/usr/local/cuda/extras/CUPTI/lib64
+```
