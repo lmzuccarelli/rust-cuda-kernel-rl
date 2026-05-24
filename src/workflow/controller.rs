@@ -29,9 +29,22 @@ impl ControllerInterface for Controller {
         for item in parameters.workflow_batch.iter() {
             // ensure logs directory is created for each cuda-kernel
             fs::create_dir_all(format!("logs/{}", item))?;
+            // TODO: method to extract gpu arch sm
+            // hardcoded for now
             let payload = format!(r##"{{ "name": "{}", "gpu_arch": "{}" }}"##, item, "86");
+
+            // download cuda kernel (init.cu)
+            let mut url = format!("{}/v1/cuda-kernel", parameters.compile_server_url);
+            process_post_call(
+                item.to_string(),
+                url,
+                "init.cu".to_string(),
+                payload.clone(),
+            )
+            .await?;
+
             // first call the compile endpoint
-            let mut url = format!("{}/v1/compile", parameters.compile_server_url);
+            url = format!("{}/v1/compile", parameters.compile_server_url);
             process_post_call(
                 item.to_string(),
                 url,
@@ -39,21 +52,13 @@ impl ControllerInterface for Controller {
                 payload.clone(),
             )
             .await?;
+
             // call the execute endpoint
             url = format!("{}/v1/execute", parameters.gpu_server_url);
             process_post_call(
                 item.to_string(),
                 url,
                 "baseline_execute.txt".to_string(),
-                payload.clone(),
-            )
-            .await?;
-            // if the compile succeeds downlaod the cuda kernel (used to embedd in llm prompt)
-            url = format!("{}/v1/cuda-kernel", parameters.gpu_server_url);
-            process_post_call(
-                item.to_string(),
-                url,
-                "init.cu".to_string(),
                 payload.clone(),
             )
             .await?;
