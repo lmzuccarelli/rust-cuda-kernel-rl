@@ -22,7 +22,7 @@ impl ProfileInterface for Profile {
 
         // get the kernel name
         let kernel = fs::read_to_string(format!("out/{}/cuda_model.cu", work_item.name))?;
-        let re = Regex::new("^__global__\\svoid\\s([a-zA-Z0-9_]*)\\($")?;
+        let re = Regex::new("[_]{2}global[_]{2}\\svoid\\s([a-zA-Z0-9_]*)")?;
         let mut kernel_name = String::new();
         for cap in re.captures_iter(&kernel) {
             kernel_name = cap[1].to_string();

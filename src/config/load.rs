@@ -9,6 +9,7 @@ pub struct Parameters {
     pub compile_server_url: String,
     pub llm_server_url: String,
     pub workflow_batch: Vec<String>,
+    pub skip_steps: usize,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]

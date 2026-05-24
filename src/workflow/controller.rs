@@ -1,4 +1,5 @@
 use crate::config::load::Parameters;
+use crate::inference::prompts::get_profile_prompt;
 use crate::workflow::api_client::{process_get_call, process_post_call};
 use custom_logger as log;
 use std::fs;
@@ -29,13 +30,14 @@ impl ControllerInterface for Controller {
         for item in parameters.workflow_batch.iter() {
             // ensure logs directory is created for each cuda-kernel
             fs::create_dir_all(format!("logs/{}", item))?;
+
             // TODO: method to extract gpu arch sm
             // hardcoded for now
             let payload = format!(r##"{{ "name": "{}", "gpu_arch": "{}" }}"##, item, "86");
 
             // download cuda kernel (init.cu)
             let mut url = format!("{}/v1/cuda-kernel", parameters.compile_server_url);
-            process_post_call(
+            let code = process_post_call(
                 item.to_string(),
                 url,
                 "init.cu".to_string(),
@@ -65,11 +67,25 @@ impl ControllerInterface for Controller {
 
             // call the nvidia ncu profile endpoint
             url = format!("{}/v1/profile", parameters.gpu_server_url);
-            process_post_call(
+            let ncu_report = process_post_call(
                 item.to_string(),
                 url,
                 "baseline_profile.txt".to_string(),
                 payload,
+            )
+            .await?;
+
+            // set the initial prompt for the llm
+            let prompt = get_profile_prompt(code, ncu_report);
+            let llm_payload = format!(r##"{{ "prompt": "{}" }}"##, prompt.replace("\n", ""));
+
+            // call the llm endpoint
+            url = format!("{}/v1/prompt", parameters.llm_server_url);
+            process_post_call(
+                item.to_string(),
+                url,
+                "baseline_llm_response.txt".to_string(),
+                llm_payload,
             )
             .await?;
         }
