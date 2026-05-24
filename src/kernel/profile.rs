@@ -17,7 +17,7 @@ impl ProfileInterface for Profile {
         log::debug!("[run] profiling cuda-kernel");
         let start = Instant::now();
 
-        env::set_current_dir(format!("out/{}/build", work_item.name))?;
+        // ensure we read and set LD_LIBARAY_PATH envar
         let ld_lib = env::var("LD_LIBRARY_PATH")?;
 
         // get the kernel name
@@ -26,11 +26,14 @@ impl ProfileInterface for Profile {
         let mut kernel_name = String::new();
         for cap in re.captures_iter(&kernel) {
             kernel_name = cap[1].to_string();
+            log::info!("[run] profile kernel name {}", kernel_name);
         }
         if kernel_name.is_empty() {
             return Err(Box::from("[run] profile could not find kernel name"));
         }
 
+        // for profiling we set the current working directory
+        env::set_current_dir(format!("out/{}/build", work_item.name))?;
         let output = Command::new("sudo")
             .arg(format!("LD_LIBRARY_PATH={}", ld_lib))
             .arg("ncu")
