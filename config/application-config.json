@@ -7,5 +7,6 @@
   "workflow_batch": [
     "level1/001_Square_matrix_multiplication"
   ],
-  "skip_steps": 0
+  "working_dir": "/home/lzuccarelli/Projects/rust-cuda-kernel-rl",
+  "flow_control": 16
 }

@@ -9,7 +9,8 @@ pub struct Parameters {
     pub compile_server_url: String,
     pub llm_server_url: String,
     pub workflow_batch: Vec<String>,
-    pub skip_steps: usize,
+    pub working_dir: String,
+    pub flow_control: u8,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -17,6 +18,7 @@ pub struct WorkItem {
     pub name: String,
     pub gpu_arch: String,
     pub prompt: Option<String>,
+    pub working_dir: String,
 }
 
 pub trait ConfigInterface {

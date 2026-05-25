@@ -101,7 +101,10 @@ impl CompileInterface for Compile {
     }
 
     async fn cuda_kernel(work_item: WorkItem) -> Result<String, Box<dyn std::error::Error>> {
-        let kernel = fs::read_to_string(format!("kernelbench-cuda/{}/init.cu", work_item.name))?;
+        let kernel = fs::read_to_string(format!(
+            "{}/kernelbench-cuda/{}/init.cu",
+            work_item.working_dir, work_item.name
+        ))?;
         Ok(kernel)
     }
 }
