@@ -1,5 +1,8 @@
 use crate::config::load::Parameters;
-use crate::inference::prompts::{get_profile_prompt, get_state_match_prompt};
+use crate::inference::prompts::{
+    get_best_optimization_prompt, get_profile_prompt, get_state_match_prompt,
+};
+use crate::kernel::profile::{Profile, ProfileInterface};
 use crate::workflow::api_client::{process_get_call, process_post_call};
 use custom_logger as log;
 use std::fs;
@@ -39,17 +42,10 @@ impl ControllerInterface for Controller {
             );
             let mut ncu_report = String::new();
             let mut state = String::new();
+            let mut code = String::new();
+            let mut elapsed_cycles = 0_u64;
 
-            // download cuda kernel (init.cu)
-            log::info!("downloading cuda kernel");
-            let url = format!("{}/v1/cuda-kernel", parameters.compile_server_url);
-            let code = process_post_call(
-                item.to_string(),
-                url,
-                "init.cu".to_string(),
-                payload.clone(),
-            )
-            .await?;
+            log::trace!("[get_baseline] initial elapsed_cycles {}", elapsed_cycles);
 
             match parameters.flow_control {
                 x if (x & 1u8) == 1 => {
@@ -60,6 +56,17 @@ impl ControllerInterface for Controller {
                         item.to_string(),
                         url,
                         "baseline_compile.txt".to_string(),
+                        payload.clone(),
+                    )
+                    .await?;
+
+                    // download cuda kernel (init.cu)
+                    log::info!("downloading cuda kernel");
+                    let url = format!("{}/v1/cuda-kernel", parameters.compile_server_url);
+                    code = process_post_call(
+                        item.to_string(),
+                        url,
+                        "init.cu".to_string(),
                         payload.clone(),
                     )
                     .await?;
@@ -87,16 +94,23 @@ impl ControllerInterface for Controller {
                         payload,
                     )
                     .await?;
+                    elapsed_cycles = Profile::get_elapsed_cycles(ncu_report)?;
+                    log::info!("[get_baseline] elapsed_cycles {}", elapsed_cycles);
                 }
                 x if (x & 8u8) == 8 => {
-                    log::info!("calling llm endpoint (baseline profile)");
+                    log::info!("calling llm endpoint (baseline current state profile)");
                     // if flow control is not set for cuda profile try read the existing file
                     if (x & 4u8) == 0 {
-                        ncu_report = fs::read_to_string(format!(
-                            "logs/{}/baseline_profile.txt",
-                            parameters.name
-                        ))?;
+                        ncu_report =
+                            fs::read_to_string(format!("logs/{}/baseline_profile.txt", item))?;
+
+                        elapsed_cycles = Profile::get_elapsed_cycles(ncu_report.clone())?;
+                        log::info!("[get_baseline] elapsed_cycles {}", elapsed_cycles);
                     }
+                    if (x & 1u8) == 0 {
+                        code = fs::read_to_string(format!("logs/{}/init.cu", item))?;
+                    }
+
                     // set the initial prompt for the llm
                     let prompt = get_profile_prompt(code, ncu_report).replace("\n", "");
                     // call the llm endpoint
@@ -104,17 +118,20 @@ impl ControllerInterface for Controller {
                     state = process_post_call(
                         item.to_string(),
                         url,
-                        "baseline_llm_response.txt".to_string(),
+                        "baseline_llm_state_response.txt".to_string(),
                         prompt,
                     )
                     .await?;
                 }
                 x if (x & 16u8) == 16 => {
+                    // we are trying to get the ONE technique that will yield the largest performance gain
                     log::info!("calling llm endpoint (baseline state match)");
                     // if flow control is not set for cuda profile try read the existing file
                     if (x & 8u8) == 0 {
-                        state =
-                            fs::read_to_string(format!("logs/{}/baseline_llm_response.txt", item))?;
+                        state = fs::read_to_string(format!(
+                            "logs/{}/baseline_llm_state_response.txt",
+                            item
+                        ))?;
                     }
                     // set the initial prompt for the llm
                     let prompt = get_state_match_prompt(state).replace("\n", "");
@@ -128,11 +145,54 @@ impl ControllerInterface for Controller {
                     )
                     .await?;
                 }
-
-                _ => {}
+                x if (x & 32u8) == 32 => {
+                    log::info!("calling llm endpoint (baseline best optimization)");
+                    // if flow control is not set for cuda profile try read the existing file
+                    if (x & 8u8) == 0 {
+                        state = fs::read_to_string(format!(
+                            "logs/{}/baseline_llm_state_response.txt",
+                            item
+                        ))?;
+                    }
+                    // set the initial prompt for the llm
+                    let prompt = get_best_optimization_prompt(state).replace("\n", "");
+                    // call the llm endpoint
+                    let url = format!("{}/v1/prompt", parameters.llm_server_url);
+                    process_post_call(
+                        item.to_string(),
+                        url,
+                        "baseline_llm_optimization_response.txt".to_string(),
+                        prompt,
+                    )
+                    .await?;
+                }
+                x if (x & 64u8) == 64 => {
+                    log::info!(
+                        "executing rollout using {} trajectories",
+                        parameters.max_trajectories
+                    );
+                    for i in 1..parameters.max_trajectories {
+                        let trajectory_dir = format!("logs/{}/trajectory_{}", item, i);
+                        log::info!("creating trajectory directory {} ", trajectory_dir);
+                        fs::create_dir_all(trajectory_dir)?;
+                    }
+                }
+                _ => {
+                    // used for testing
+                    log::warn!(
+                        "[testing] current flow control {} is used for testing",
+                        parameters.flow_control
+                    );
+                    let ncu_report =
+                        fs::read_to_string(format!("logs/{}/baseline_profile.txt", item))?;
+                    elapsed_cycles = Profile::get_elapsed_cycles(ncu_report.clone())?;
+                    log::info!("[testing] elapsed_cycles {}", elapsed_cycles);
+                    let (result, reward) = Profile::calculate_improvement(elapsed_cycles, 7677773)?;
+                    log::info!("[testing] result {} : reward {}", result, reward);
+                }
             }
         }
-        log::info!("workflow controller completed successfully");
+        log::info!("[get_baseline] workflow controller completed successfully");
         Ok(())
     }
 }

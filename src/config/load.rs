@@ -10,6 +10,7 @@ pub struct Parameters {
     pub llm_server_url: String,
     pub workflow_batch: Vec<String>,
     pub working_dir: String,
+    pub max_trajectories: u8,
     pub flow_control: u8,
 }
 

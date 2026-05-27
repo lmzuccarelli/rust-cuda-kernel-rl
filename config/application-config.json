@@ -3,10 +3,11 @@
 	"log_level": "debug",
 	"gpu_server_url": "http://192.168.1.221:3202",
   "compile_server_url": "http://192.168.1.221:3201",
-  "llm_server_url": "http://192.168.1.19:3200",
+  "llm_server_url": "http://192.168.1.178:3200",
   "workflow_batch": [
     "level1/001_Square_matrix_multiplication"
   ],
   "working_dir": "/home/lzuccarelli/Projects/rust-cuda-kernel-rl",
-  "flow_control": 16
+  "max_trajectories": 10,
+  "flow_control": 0
 }

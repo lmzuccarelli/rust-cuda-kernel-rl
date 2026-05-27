@@ -1,3 +1,5 @@
+use std::fs;
+
 pub fn get_profile_prompt(code: String, ncu_report: String) -> String {
     format!(
         r#"
@@ -210,10 +212,56 @@ If confidence < 0.6, respond with BEST_MATCH: NEW_STATE_NEEDED
     )
 }
 
+pub fn get_optimization_plan(
+    top_n: u8,
+    state_analysis_response: String,
+    code: String,
+    available_optimizations: String,
+) -> String {
+    format!(r#"
+You are a world-class GPU optimisation expert.  Based on the kernel implementation and the qualitative state analysis below, choose the **{top_n}** optimisation techniques that are most likely to improve performance.  
+From the list of AVAILABLE OPTIMISATIONS pick only those with the highest relevance to the observed performance characteristics **and** the specific code patterns you see.
+
+For *each* chosen technique provide a concise explanation *why* it is relevant and *how* it should be applied to the given code.
+Also assign a numerical RELEVANCE_SCORE between 0.0 (not relevant) and 1.0 (perfect match).
+
+Return your answer as **valid JSON** in the EXACT format (no extra keys, no
+comments, do not wrap the JSON in markdown fences):
+
+[
+  {{
+    "technique": "<name>",
+    "relevance_score": <float 0-1>,
+    "description": "<explain what the optimisation does and *why* it applies to the current code>"
+  }},
+  ... (exactly {top_n} entries)
+]
+
+Besides the available optimisation techniques in Performance State Categories, you should always consider using the following techniques: 
+
+- For memory bandwidth bound, or compute bandwidth bound kernels: prioritize using **SIMD_operations**: Use packed SIMD datatypes such as half2
+- For compute bandwidth bound and compute throughput bound kernels: prioritize using **tensor_core_utilization**: Use tensor core library such as wmma when there exist a tensor cores (sm_70+) in the target GPU archecture. 
+
+----------------------- CURRENT KERNEL CONTEXT -----------------------
+STATE ANALYSIS RESPONSE:
+{state_analysis_response}
+
+CODE IMPLEMENTATION:
+```cpp
+{code}
+```
+
+----------------------- AVAILABLE OPTIMISATIONS ----------------------
+{available_optimizations}
+
+    "#).to_string()
+}
+
 pub fn get_best_optimization_prompt(state_summary: String) -> String {
     format!(
         r#"
-You are a GPU optimisation expert. A kernel has been analysed and its qualitative performance characteristics are shown below. From the list of available optimisation techniques pick the ONE technique that you judge will yield the largest performance gain. 
+You are a GPU optimisation expert. A kernel has been analysed and its qualitative performance characteristics are shown below.
+From the list of available optimisation techniques pick the ONE technique that you judge will yield the largest performance gain. 
 Respond STRICTLY in the format:
 
 BEST_OPTIMIZATION: <technique name>
@@ -330,4 +378,201 @@ STATE: transfer_bandwidth_limited
 
 "#
     )
+}
+
+pub fn get_performance_state_category() -> String {
+    r#"
+#### State: high_level_inefficiency
+**Characteristics**: Excessive or redundant compute operations, memory accesses. Poor scaling, inefficient program logic. Can have misleadingly high utilization.
+**Primary Bottleneck**: Instructions uncessary for computing the kernel
+**Optimizations**:
+- **algorithmic_changes**: 1.00x predicted speedup - Replace the current algorithm with a more efficient approach
+- **dynamic_programming**: 1.00x predicted speedup - Utilize memory to avoid redundant computation
+- **data_structure_optimizations**: 1.00x predicted speedup - Change underlying data structures/representations
+
+#### State: memory_bandwidth_saturated
+**Characteristics**: Memory throughput >80%, Bandwidth utilization high, Coalescing efficiency varies
+**Primary Bottleneck**: Global memory bandwidth saturation
+**Optimizations**:
+- **vectorized_memory_access**: 1.00x predicted speedup - Use float4/int4/half2 for wider transactions
+- **memory_coalescing_optimization**: 1.00x predicted speedup - Align access patterns to cache lines
+- **shared_memory_tiling**: 1.00x predicted speedup - Cache frequently accessed data on-chip
+- **data_layout_transformation**: 1.00x predicted speedup - Convert AoS to SoA layouts
+- **compression_techniques**: 1.00x predicted speedup - Use mixed precision (FP16) to halve bandwidth
+
+#### State: memory_latency_bound
+**Characteristics**: Memory throughput 40-70%, High cache miss rate, Random access patterns
+**Primary Bottleneck**: Memory access latency and cache misses
+**Optimizations**:
+- **shared_memory_blocking**: 1.00x predicted speedup - Tile data to fit in shared memory
+- **register_blocking**: 1.00x predicted speedup - Keep frequently used data in registers
+- **prefetching_strategies**: 1.00x predicted speedup - Software prefetching for predictable patterns
+- **cache_aware_algorithms**: 1.00x predicted speedup - Restructure for better locality
+- **texture_memory_usage**: 1.00x predicted speedup - Use texture cache for read-only data
+
+#### State: memory_bank_conflicts
+**Characteristics**: Shared memory bank conflicts detected, Irregular access patterns in shared memory
+**Primary Bottleneck**: Shared memory bank conflicts causing serialization
+**Optimizations**:
+- **bank_conflict_padding**: 1.00x predicted speedup - Add padding to shared memory arrays
+- **access_pattern_swizzling**: 1.00x predicted speedup - Use XOR patterns to distribute accesses
+- **broadcast_optimization**: 1.00x predicted speedup - Structure for broadcast reads when possible
+- **memory_layout_permutation**: 1.00x predicted speedup - Reorder data to avoid conflicts
+
+#### State: cache_inefficient
+**Characteristics**: Low L1/L2 cache hit rates, Spatial locality issues, Poor temporal reuse
+**Primary Bottleneck**: Cache misses and inefficient cache utilization
+**Optimizations**:
+- **cache_blocking_algorithms**: 1.00x predicted speedup - Structure working sets for cache sizes
+- **temporal_locality_optimization**: 1.00x predicted speedup - Reorder computations for reuse
+- **l2_cache_persistence**: 1.00x predicted speedup - Mark critical data for L2 retention
+- **read_only_cache_optimization**: 1.00x predicted speedup - Use __ldg() for read-only data
+
+#### State: compute_throughput_saturated
+**Characteristics**: Compute throughput >80%, All execution units busy, High arithmetic intensity
+**Primary Bottleneck**: Instruction throughput and arithmetic unit saturation
+**Optimizations**:
+- **tensor_core_utilization**: 1.00x predicted speedup - Use Tensor Cores for matrix operations
+- **instruction_level_parallelism**: 1.00x predicted speedup - Unroll loops and reorder operations
+- **fast_math_optimization**: 1.00x predicted speedup - Use fast math flags and intrinsics
+- **specialized_instruction_usage**: 1.00x predicted speedup - Use GPU-specific intrinsics
+- **vectorized_operations**: 1.00x predicted speedup - Use vector data types and operations
+- **SIMD_operations**: 1.00x predicted speedup - Use packed SIMD datatypes such as half2
+
+#### State: instruction_mix_suboptimal
+**Characteristics**: Unbalanced use of functional units, Some units idle while others saturated
+**Primary Bottleneck**: Poor instruction scheduling and functional unit utilization
+**Optimizations**:
+- **instruction_scheduling_optimization**: 1.00x predicted speedup - Reorder for better pipeline usage
+- **functional_unit_balancing**: 1.00x predicted speedup - Balance load across different units
+- **loop_fusion_optimization**: 1.00x predicted speedup - Combine kernels to balance instruction mix
+- **mathematical_transformation**: 1.00x predicted speedup - Adjust operators to solve the problem in a different way
+
+#### State: thread_divergence_high
+**Characteristics**: High warp divergence, Branching in inner loops, Irregular control flow
+**Primary Bottleneck**: SIMT efficiency loss due to divergent execution paths
+**Optimizations**:
+- **predicated_execution**: 1.00x predicted speedup - Replace branches with conditional arithmetic
+- **branch_reduction_techniques**: 1.00x predicted speedup - Use lookup tables and bit manipulation
+- **warp_level_primitives**: 1.00x predicted speedup - Use shuffle and vote functions
+- **stream_compaction**: 1.00x predicted speedup - Filter and compact data to reduce divergence
+- **work_distribution_optimization**: 1.00x predicted speedup - Sort data to group similar work
+
+#### State: low_occupancy_register_pressure
+**Characteristics**: Low occupancy due to high register usage, Register spills detected
+**Primary Bottleneck**: Register pressure limiting number of active warps
+**Optimizations**:
+- **register_pressure_reduction**: 1.00x predicted speedup - Reduce variable scope and reuse
+- **variable_scoping_optimization**: 1.00x predicted speedup - Limit variable lifetimes
+- **spill_elimination**: 1.00x predicted speedup - Restructure to avoid local memory usage
+- **launch_bounds_tuning**: 1.00x predicted speedup - Use __launch_bounds__ to control registers
+- **algorithmic_register_reduction**: 1.00x predicted speedup - Change algorithm to use fewer registers
+
+#### State: low_occupancy_shared_memory
+**Characteristics**: Low occupancy due to shared memory limits, High shared memory usage per block
+**Primary Bottleneck**: Shared memory usage limiting number of resident blocks
+**Optimizations**:
+- **shared_memory_optimization**: 1.00x predicted speedup - Reduce per-block shared memory usage
+- **dynamic_shared_memory**: 1.00x predicted speedup - Use dynamic allocation for flexibility
+- **shared_memory_reuse**: 1.00x predicted speedup - Reuse buffers for multiple phases
+- **block_size_adaptation**: 1.00x predicted speedup - Adjust block size to optimize occupancy
+
+#### State: insufficient_parallelism
+**Characteristics**: Low warp utilization, Small problem sizes, Insufficient work per SM
+**Primary Bottleneck**: Not enough parallel work to hide latency
+**Optimizations**:
+- **work_per_thread_increase**: 1.00x predicted speedup - Assign more work to each thread
+- **thread_coarsening**: 1.00x predicted speedup - Process multiple elements per thread
+- **persistent_kernel_pattern**: 1.00x predicted speedup - Use long-running kernels with work queues
+- **grid_size_optimization**: 1.00x predicted speedup - Ensure sufficient blocks for latency hiding
+- **cooperative_groups**: 1.00x predicted speedup - Use grid-wide synchronization
+
+#### State: hybrid_bound
+**Characteristics**: Memory throughput 40-70% and compute throughput 40-70%, indicating that neither memory nor compute dominates. Latency hiding is moderate and improvement is possible from both sides.
+**Primary Bottleneck**: Balanced memory-compute limitations (hybrid)
+**Optimizations**:
+- **memory_compute_overlap**: 1.00x predicted speedup - Pipeline memory and compute operations to hide latency
+- **adaptive_block_sizing**: 1.00x predicted speedup - Adjust thread-block sizes dynamically to balance resource usage
+- **algorithmic_optimization**: 1.00x predicted speedup - Restructure algorithms for better memory-compute balance
+- **fused_operations**: 1.00x predicted speedup - Fuse memory-bound and compute-bound kernels to reduce intermediate traffic
+- **SIMD_operations**: 1.00x predicted speedup - Use packed SIMD datatypes (e.g., half2) to improve both bandwidth and compute throughput
+
+#### State: memory_compute_balanced
+**Characteristics**: Memory throughput 40-60%, Compute throughput 40-60%, Both contribute to bottleneck
+**Primary Bottleneck**: Balanced memory and compute load with room for optimization in both
+**Optimizations**:
+- **memory_compute_overlap**: 1.00x predicted speedup - Pipeline memory and compute operations
+- **adaptive_tiling**: 1.00x predicted speedup - Dynamically adjust tile sizes for balance
+- **fused_operations**: 1.00x predicted speedup - Combine memory-bound and compute-bound kernels
+- **algorithmic_rebalancing**: 1.00x predicted speedup - Choose algorithms that balance both aspects
+
+#### State: latency_memory_bound
+**Characteristics**: Low occupancy combined with memory issues, Multiple bottlenecks present
+**Primary Bottleneck**: Both occupancy and memory access patterns need optimization
+**Optimizations**:
+- **occupancy_memory_codesign**: 1.00x predicted speedup - Jointly optimize occupancy and memory
+- **hierarchical_tiling**: 1.00x predicted speedup - Multi-level tiling for both occupancy and locality
+- **resource_balanced_design**: 1.00x predicted speedup - Balance all resource constraints
+- **workload_restructuring**: 1.00x predicted speedup - Fundamental algorithm changes
+
+#### State: api_overhead_dominant
+**Characteristics**: Small kernels with high launch overhead, Frequent CPU-GPU synchronization
+**Primary Bottleneck**: CUDA API overhead and kernel launch latency
+**Optimizations**:
+- **kernel_fusion**: 1.00x predicted speedup - Combine multiple small kernels
+- **cuda_graphs**: 1.00x predicted speedup - Use graphs to batch operations
+- **persistent_kernels**: 1.00x predicted speedup - Long-running kernels with internal queues
+- **asynchronous_execution**: 1.00x predicted speedup - Overlap with streams
+- **dynamic_parallelism**: 1.00x predicted speedup - Launch child kernels from GPU
+
+#### State: transfer_bandwidth_limited
+**Characteristics**: High PCIe transfer overhead, Large data movement, Host-device bottleneck
+**Primary Bottleneck**: Host-device transfer bandwidth and latency
+**Optimizations**:
+- **transfer_optimization**: 1.00x predicted speedup - Use pinned memory and async transfers
+- **data_compression**: 1.00x predicted speedup - Compress data before transfer
+- **zero_copy_memory**: 1.00x predicted speedup - Direct GPU access to host memory
+- **unified_memory_optimization**: 1.00x predicted speedup - Use managed memory with hints
+- **pipeline_parallelism**: 1.00x predicted speedup - Overlap transfers with computation
+  "#.to_string()
+}
+
+pub fn get_apply_optimization_prompt(code: String) -> String {
+    format!(
+        r#"
+```cpp
+{code}
+```
+
+CRITICAL REQUIREMENTS:
+1. Reference the optimization database for detailed implementation guidance
+2. Generate COMPLETE, COMPILABLE CUDA code
+3. Include ALL necessary components:
+   - #include statements (cuda_fp16.h, cuda_runtime.h, etc.)
+   - #define constants - DEFINE ALL CONSTANTS BEFORE USING THEM
+   - Complete __global__ kernel function with proper signature
+   - Complete launch_gpu_implementation function
+4. Format ALL code in a single ```cpp code block
+5. Focus specifically on the technique described in the database
+6. COMPILATION SAFETY: Ensure all constants are properly defined
+7. Summarize the optimization technique applied and the reason for the improvement before the code.
+
+APPROACH:
+1. Apply requested the optimization technique systematically
+2. If applying a new technique not yet attempted in the code, start with the most minimal example, focusing on correctness.
+4. Please use the reference code provided in the prompt as helper functions for your optimized kernel.
+3. Generate optimized code addressing the identified performance issues
+
+  "#
+    ).to_string()
+}
+
+pub fn get_db_header() -> Result<String, Box<dyn std::error::Error>> {
+    let content = fs::read_to_string("kernelbench-cuda/data/optimization_database_header.md")?;
+    Ok(content)
+}
+
+pub fn get_db_footer() -> Result<String, Box<dyn std::error::Error>> {
+    let content = fs::read_to_string("kernelbench-cuda/data/optimization_database_footer.md")?;
+    Ok(content)
 }

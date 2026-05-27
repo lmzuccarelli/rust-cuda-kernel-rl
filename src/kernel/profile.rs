@@ -8,6 +8,11 @@ use std::time::Instant;
 
 pub trait ProfileInterface {
     async fn run(work_item: WorkItem) -> Result<String, Box<dyn std::error::Error>>;
+    fn get_elapsed_cycles(ncu_report: String) -> Result<u64, Box<dyn std::error::Error>>;
+    fn calculate_improvement(
+        baseline: u64,
+        current: u64,
+    ) -> Result<(f64, f64), Box<dyn std::error::Error>>;
 }
 
 pub struct Profile {}
@@ -83,5 +88,24 @@ impl ProfileInterface for Profile {
         fs::write("output.profile", stdout.clone())?;
 
         Ok(stdout)
+    }
+
+    fn get_elapsed_cycles(ncu_report: String) -> Result<u64, Box<dyn std::error::Error>> {
+        let re = Regex::new("[\\s]{4}Elapsed\\sCycles[\\s]+cycle[\\s]+([0-9,]*)")?;
+        let mut elapsed_cycles = 0;
+        for cap in re.captures_iter(&ncu_report) {
+            elapsed_cycles = cap[1].to_string().replace(",", "").parse::<u64>()?;
+            log::trace!("[get_initial_elapsed_cycles] {}", elapsed_cycles);
+        }
+        Ok(elapsed_cycles)
+    }
+
+    fn calculate_improvement(
+        baseline: u64,
+        current: u64,
+    ) -> Result<(f64, f64), Box<dyn std::error::Error>> {
+        let reward = (baseline - current) as f64 / baseline as f64;
+        let result = reward * 100.0;
+        Ok((result, reward))
     }
 }
