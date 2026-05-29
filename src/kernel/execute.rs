@@ -14,9 +14,7 @@ impl ExecuteInterface for Execute {
         log::debug!("[run] executing cuda-kernel binary");
         let start = Instant::now();
 
-        let output = Command::new(format!("out/{}/build/main", work_item.name))
-            .output()
-            .expect("failed to spawn shell");
+        let output = Command::new(format!("out/{}/build/main", work_item.name)).output()?;
 
         let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
         let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();

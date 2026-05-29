@@ -5,6 +5,7 @@ use crate::inference::prompts::{
 use crate::kernel::profile::{Profile, ProfileInterface};
 use crate::workflow::api_client::{process_get_call, process_post_call};
 use custom_logger as log;
+use short_id::short_id_with_bytes;
 use std::fs;
 
 pub trait ControllerInterface {
@@ -32,7 +33,7 @@ impl ControllerInterface for Controller {
     async fn get_baseline(parameters: Parameters) -> Result<(), Box<dyn std::error::Error>> {
         for item in parameters.workflow_batch.iter() {
             // ensure logs directory is created for each cuda-kernel
-            fs::create_dir_all(format!("logs/{}", item))?;
+            fs::create_dir_all(format!("logs/{}/baseline", item))?;
 
             // TODO: method to extract gpu arch sm
             // hardcoded for now
@@ -55,7 +56,7 @@ impl ControllerInterface for Controller {
                     process_post_call(
                         item.to_string(),
                         url,
-                        "baseline_compile.txt".to_string(),
+                        "baseline/compile.txt".to_string(),
                         payload.clone(),
                     )
                     .await?;
@@ -78,7 +79,7 @@ impl ControllerInterface for Controller {
                     process_post_call(
                         item.to_string(),
                         url,
-                        "baseline_execute.txt".to_string(),
+                        "baseline/execute.txt".to_string(),
                         payload.clone(),
                     )
                     .await?;
@@ -90,7 +91,7 @@ impl ControllerInterface for Controller {
                     ncu_report = process_post_call(
                         item.to_string(),
                         url,
-                        "baseline_profile.txt".to_string(),
+                        "baseline/profile.txt".to_string(),
                         payload,
                     )
                     .await?;
@@ -102,7 +103,7 @@ impl ControllerInterface for Controller {
                     // if flow control is not set for cuda profile try read the existing file
                     if (x & 4u8) == 0 {
                         ncu_report =
-                            fs::read_to_string(format!("logs/{}/baseline_profile.txt", item))?;
+                            fs::read_to_string(format!("logs/{}/baseline/profile.txt", item))?;
 
                         elapsed_cycles = Profile::get_elapsed_cycles(ncu_report.clone())?;
                         log::info!("[get_baseline] elapsed_cycles {}", elapsed_cycles);
@@ -118,7 +119,7 @@ impl ControllerInterface for Controller {
                     state = process_post_call(
                         item.to_string(),
                         url,
-                        "baseline_llm_state_response.txt".to_string(),
+                        "baseline/llm_state_response.txt".to_string(),
                         prompt,
                     )
                     .await?;
@@ -129,7 +130,7 @@ impl ControllerInterface for Controller {
                     // if flow control is not set for cuda profile try read the existing file
                     if (x & 8u8) == 0 {
                         state = fs::read_to_string(format!(
-                            "logs/{}/baseline_llm_state_response.txt",
+                            "logs/{}/baseline/llm_state_response.txt",
                             item
                         ))?;
                     }
@@ -140,7 +141,7 @@ impl ControllerInterface for Controller {
                     process_post_call(
                         item.to_string(),
                         url,
-                        "baseline_llm_match_response.txt".to_string(),
+                        "baseline/llm_match_response.txt".to_string(),
                         prompt,
                     )
                     .await?;
@@ -150,7 +151,7 @@ impl ControllerInterface for Controller {
                     // if flow control is not set for cuda profile try read the existing file
                     if (x & 8u8) == 0 {
                         state = fs::read_to_string(format!(
-                            "logs/{}/baseline_llm_state_response.txt",
+                            "logs/{}/baseline/llm_state_response.txt",
                             item
                         ))?;
                     }
@@ -161,7 +162,7 @@ impl ControllerInterface for Controller {
                     process_post_call(
                         item.to_string(),
                         url,
-                        "baseline_llm_optimization_response.txt".to_string(),
+                        "baseline/llm_optimization_response.txt".to_string(),
                         prompt,
                     )
                     .await?;
@@ -172,7 +173,9 @@ impl ControllerInterface for Controller {
                         parameters.max_trajectories
                     );
                     for i in 1..parameters.max_trajectories {
-                        let trajectory_dir = format!("logs/{}/trajectory_{}", item, i);
+                        // Generate a shorter 8-character ID (6 bytes)
+                        let short = short_id_with_bytes(6)?;
+                        let trajectory_dir = format!("logs/{}/trajectory_{}_{}", item, i, short);
                         log::info!("creating trajectory directory {} ", trajectory_dir);
                         fs::create_dir_all(trajectory_dir)?;
                     }
@@ -184,7 +187,7 @@ impl ControllerInterface for Controller {
                         parameters.flow_control
                     );
                     let ncu_report =
-                        fs::read_to_string(format!("logs/{}/baseline_profile.txt", item))?;
+                        fs::read_to_string(format!("logs/{}/baseline/profile.txt", item))?;
                     elapsed_cycles = Profile::get_elapsed_cycles(ncu_report.clone())?;
                     log::info!("[testing] elapsed_cycles {}", elapsed_cycles);
                     let (result, reward) = Profile::calculate_improvement(elapsed_cycles, 7677773)?;

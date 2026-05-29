@@ -50,8 +50,7 @@ impl ProfileInterface for Profile {
             .arg("profile")
             .arg("-f")
             .arg("main")
-            .output()
-            .expect("failed to execute ncu profile agent");
+            .output()?;
 
         let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
         let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
@@ -72,8 +71,7 @@ impl ProfileInterface for Profile {
             .arg("profile.ncu-rep")
             .arg("--page")
             .arg("details")
-            .output()
-            .expect("failed to execute ncu convert profile agent");
+            .output()?;
 
         let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
         let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
@@ -87,6 +85,8 @@ impl ProfileInterface for Profile {
         // write the final report to disk
         fs::write("output.profile", stdout.clone())?;
 
+        // restore working dir
+        env::set_current_dir(work_item.working_dir)?;
         Ok(stdout)
     }
 

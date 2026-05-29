@@ -61,8 +61,7 @@ impl CompileInterface for Compile {
             .arg("-DCMAKE_BUILD_TYPE=Release")
             .arg("..")
             .arg(format!("-DGPU_ARCH_VERSION={}", work_item.gpu_arch))
-            .output()
-            .expect("failed to execute cmake");
+            .output()?;
 
         let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
         let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
@@ -82,8 +81,7 @@ impl CompileInterface for Compile {
             .arg(".")
             .arg("--config")
             .arg("Release")
-            .output()
-            .expect("failed to execute cmake");
+            .output()?;
 
         let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
         let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
@@ -97,6 +95,8 @@ impl CompileInterface for Compile {
             return Err(Box::from(stderr));
         }
 
+        // restore working dir
+        env::set_current_dir(work_item.working_dir)?;
         Ok(stdout)
     }
 

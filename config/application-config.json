@@ -9,5 +9,5 @@
   ],
   "working_dir": "/home/lzuccarelli/Projects/rust-cuda-kernel-rl",
   "max_trajectories": 10,
-  "flow_control": 0
+  "flow_control": 7
 }
