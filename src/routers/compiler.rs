@@ -22,17 +22,18 @@ pub async fn endpoints(req: Request<Incoming>) -> Result<Response<Full<Bytes>>, 
                                 *response.body_mut() = Full::from(content);
                             }
                             Err(err) => {
-                                log::error!("[endpoints] {}", err);
+                                log::error!("[endpoints] compile {}", err);
                                 *response.status_mut() = StatusCode::INTERNAL_SERVER_ERROR;
                                 *response.body_mut() =
-                                    Full::from(format!("[endpoints] error : {}\n", err));
+                                    Full::from(format!("[endpoints] compile error : {}\n", err));
                             }
                         }
                     }
                     Err(err) => {
-                        log::error!("[endpoints] {}", err);
+                        log::error!("[endpoints] compile {}", err);
                         *response.status_mut() = StatusCode::INTERNAL_SERVER_ERROR;
-                        *response.body_mut() = Full::from(format!("[endpoints] error : {}\n", err));
+                        *response.body_mut() =
+                            Full::from(format!("[endpoints] compile error : {}\n", err));
                     }
                 }
             }
@@ -41,26 +42,57 @@ pub async fn endpoints(req: Request<Incoming>) -> Result<Response<Full<Bytes>>, 
                 let work_item_res = serde_json::from_slice(&data);
                 match work_item_res {
                     Ok(work_item) => {
-                        let content_res = Compile::cuda_kernel(work_item).await;
+                        let content_res = Compile::cuda_kernel(work_item, false).await;
                         match content_res {
                             Ok(content) => {
                                 *response.body_mut() = Full::from(content);
                             }
                             Err(err) => {
-                                log::error!("[endpoints] {}", err);
+                                log::error!("[endpoints] cuda-kernel {}", err);
+                                *response.status_mut() = StatusCode::INTERNAL_SERVER_ERROR;
+                                *response.body_mut() = Full::from(format!(
+                                    "[endpoints] cuda-kernel error : {}\n",
+                                    err
+                                ));
+                            }
+                        }
+                    }
+                    Err(err) => {
+                        log::error!("[endpoints] cuda-kernel {}", err);
+                        *response.status_mut() = StatusCode::INTERNAL_SERVER_ERROR;
+                        *response.body_mut() =
+                            Full::from(format!("[endpoints] cuda-kernel error : {}\n", err));
+                    }
+                }
+            }
+            x if x.contains("/v1/upload") => {
+                let data = req.into_body().collect().await?.to_bytes();
+                let work_item_res = serde_json::from_slice(&data);
+                match work_item_res {
+                    Ok(work_item) => {
+                        let content_res = Compile::cuda_kernel(work_item, true).await;
+                        match content_res {
+                            Ok(_) => {
+                                *response.status_mut() = StatusCode::OK;
+                                *response.body_mut() = Full::from("ok");
+                            }
+                            Err(err) => {
+                                log::error!("[endpoints] upload {}", err);
                                 *response.status_mut() = StatusCode::INTERNAL_SERVER_ERROR;
                                 *response.body_mut() =
-                                    Full::from(format!("[endpoints] error : {}\n", err));
+                                    Full::from(format!("[endpoints] upload error : {}\n", err));
                             }
                         }
                     }
                     Err(err) => {
                         log::error!("[endpoints] {}", err);
                         *response.status_mut() = StatusCode::INTERNAL_SERVER_ERROR;
-                        *response.body_mut() = Full::from(format!("[endpoints] error : {}\n", err));
+                        *response.body_mut() =
+                            Full::from(format!("[endpoints] upload error : {}\n", err));
                     }
                 }
             }
+
             &_ => {}
         },
         Method::GET => match request {

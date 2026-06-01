@@ -10,8 +10,10 @@ pub struct Parameters {
     pub llm_server_url: String,
     pub workflow_batch: Vec<String>,
     pub working_dir: String,
+    pub gpu_arch: u8,
     pub max_trajectories: u8,
     pub flow_control: u8,
+    pub test: bool,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -20,6 +22,8 @@ pub struct WorkItem {
     pub gpu_arch: String,
     pub prompt: Option<String>,
     pub working_dir: String,
+    pub target_dir: String,
+    pub code: String,
 }
 
 pub trait ConfigInterface {

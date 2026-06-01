@@ -19,7 +19,7 @@ impl ExecuteInterface for Execute {
         let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
         let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
         let elapsed = start.elapsed();
-        log::info!("completed task in {:?}", elapsed);
+        log::info!("[run] execute : completed task in {:?}", elapsed);
 
         if !output.status.success() {
             return Err(Box::from(stderr.to_string()));

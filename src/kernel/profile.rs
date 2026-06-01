@@ -13,6 +13,7 @@ pub trait ProfileInterface {
         baseline: u64,
         current: u64,
     ) -> Result<(f64, f64), Box<dyn std::error::Error>>;
+    fn get_category(state_report: String) -> Result<String, Box<dyn std::error::Error>>;
 }
 
 pub struct Profile {}
@@ -31,7 +32,7 @@ impl ProfileInterface for Profile {
         let mut kernel_name = String::new();
         for cap in re.captures_iter(&kernel) {
             kernel_name = cap[1].to_string();
-            log::info!("[run] profile kernel name {}", kernel_name);
+            log::info!("[run] profiling : kernel {}", kernel_name);
         }
         if kernel_name.is_empty() {
             return Err(Box::from("[run] profile could not find kernel name"));
@@ -55,7 +56,7 @@ impl ProfileInterface for Profile {
         let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
         let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
         let elapsed = start.elapsed();
-        log::info!("completed task in {:?}", elapsed);
+        log::info!("[run] profile : completed task in {:?}", elapsed);
 
         if !output.status.success() {
             return Err(Box::from(stderr.to_string()));
@@ -76,7 +77,7 @@ impl ProfileInterface for Profile {
         let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
         let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
         let elapsed = start.elapsed();
-        log::info!("completed task in {:?}", elapsed);
+        log::info!("[run] profile convert : completed task in {:?}", elapsed);
 
         if !output.status.success() {
             return Err(Box::from(stderr.to_string()));
@@ -98,6 +99,16 @@ impl ProfileInterface for Profile {
             log::trace!("[get_initial_elapsed_cycles] {}", elapsed_cycles);
         }
         Ok(elapsed_cycles)
+    }
+
+    fn get_category(state_report: String) -> Result<String, Box<dyn std::error::Error>> {
+        let re = Regex::new("[\\*]{2}PRIMARY_BOTTLENECK:[\\*]{2}[\\s]*([`a-zA-Z_]*)")?;
+        let mut category = String::new();
+        for cap in re.captures_iter(&state_report) {
+            category = cap[1].to_string().replace("`", "").replace("_bound", "");
+            log::trace!("[get_category] {}", category);
+        }
+        Ok(category)
     }
 
     fn calculate_improvement(

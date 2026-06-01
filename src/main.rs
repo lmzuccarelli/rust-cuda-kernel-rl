@@ -168,14 +168,16 @@ pub async fn execute(
 
     // check if we are in workflow controller mode or launch service mode
     if command == "controller" {
-        // check health endpoints
-        Controller::get_health(parameters.clone()).await?;
-        // endpoints are good lets get the cuda-kernel baseline
-        Controller::get_baseline(parameters).await?;
+        // only call health endpoints if we are not testing
+        if !parameters.test {
+            Controller::get_health(parameters.clone()).await?;
+        }
+        Controller::execute_flow(parameters).await?;
         Ok(())
     } else {
         let port = get_port(command.clone(), parameters)?;
         log::info!("port        : {}", port);
+        println!();
         let addr = SocketAddr::new(Ipv4Addr::new(0, 0, 0, 0).into(), port);
         log::info!("[execute] starting to serve on http://{}", addr);
         let listener = TcpListener::bind(addr).await?;

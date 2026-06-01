@@ -1,6 +1,6 @@
 [package]
 name = "rust-cuda-kernel-rl"
-version = "0.1.23"
+version = "0.2.5"
 edition = "2024"
 authors = ["Luigi Mario Zuccarelli<>luigizuccarelli@gmail.com"]
 
@@ -22,6 +22,8 @@ hyper-util = { version = "0.1.20" ,  default-features = false, features = ["clie
 mimalloc = { version = "*", features = ["v3"] }
 regex = "1.12.3"
 short-id = "0.5.0"
+futures = "0.3.32"
+walkdir = "2.5.0"
 
 [profile.release]
 strip = true # Strip symbols from the binary

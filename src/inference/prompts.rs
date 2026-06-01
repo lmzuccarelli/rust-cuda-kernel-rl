@@ -225,8 +225,7 @@ From the list of AVAILABLE OPTIMISATIONS pick only those with the highest releva
 For *each* chosen technique provide a concise explanation *why* it is relevant and *how* it should be applied to the given code.
 Also assign a numerical RELEVANCE_SCORE between 0.0 (not relevant) and 1.0 (perfect match).
 
-Return your answer as **valid JSON** in the EXACT format (no extra keys, no
-comments, do not wrap the JSON in markdown fences):
+Return your answer as **valid JSON** in the EXACT format (no extra keys, no comments, do not wrap the JSON in markdown fences):
 
 [
   {{
@@ -257,7 +256,10 @@ CODE IMPLEMENTATION:
     "#).to_string()
 }
 
-pub fn get_best_optimization_prompt(state_summary: String) -> String {
+pub fn get_best_optimization_prompt(
+    state_summary: String,
+    available_optimizations: String,
+) -> String {
     format!(
         r#"
 You are a GPU optimisation expert. A kernel has been analysed and its qualitative performance characteristics are shown below.
@@ -271,6 +273,12 @@ CURRENT STATE SUMMARY
 {state_summary}
 
 AVAILABLE OPTIMISATIONS:
+{available_optimizations}
+"#).to_string()
+}
+
+pub fn get_available_optimizations() -> String {
+    r#"
 STATE: high_level_inefficiency
   - algorithmic_changes (pred 1.00x | conf 0.5): Replace the current algorithm with a more efficient approach
   - dynamic_programming (pred 1.00x | conf 0.5): Utilize memory to avoid redundant computation
@@ -376,8 +384,7 @@ STATE: transfer_bandwidth_limited
   - unified_memory_optimization (pred 1.00x | conf 0.5): Use managed memory with hints
   - pipeline_parallelism (pred 1.00x | conf 0.5): Overlap transfers with computation
 
-"#
-    )
+"#.to_string()
 }
 
 pub fn get_performance_state_category() -> String {
@@ -537,42 +544,64 @@ pub fn get_performance_state_category() -> String {
   "#.to_string()
 }
 
-pub fn get_apply_optimization_prompt(code: String) -> String {
+pub fn get_task_generate_code_prompt(
+    technique: String,
+    category: String,
+    description: String,
+    profile: String,
+    code: String,
+    combined: String,
+) -> String {
     format!(
         r#"
-```cpp
-{code}
-```
+OPTIMIZATION TASK:
+You are an expert CUDA optimization agent, and you are provided an optimization plan. Your task is to apply the optimization plan to the current kernel. You will be provided with the annotated source code, the raw NCU profiling log, and the optimization plan.
 
+OPTIMIZATION STRATEGY: {technique}
+PREDICTED IMPROVEMENT: N/A
+CATEGORY: {category}
+
+STRATEGY DESCRIPTION:
+{description}
+
+CURRENT KERNEL ANALYSIS:
+{profile}
+
+ANNOTATED SOURCE CODE (with per-line analysis):
+{code}
+
+{combined}
 CRITICAL REQUIREMENTS:
-1. Reference the optimization database for detailed implementation guidance
-2. Generate COMPLETE, COMPILABLE CUDA code
+1. Reference the optimization database for detailed implementation guidance.
+2. Generate COMPLETE, COMPILABLE CUDA code.
 3. Include ALL necessary components:
    - #include statements (cuda_fp16.h, cuda_runtime.h, etc.)
    - #define constants - DEFINE ALL CONSTANTS BEFORE USING THEM
    - Complete __global__ kernel function with proper signature
    - Complete launch_gpu_implementation function
-4. Format ALL code in a single ```cpp code block
-5. Focus specifically on the technique described in the database
-6. COMPILATION SAFETY: Ensure all constants are properly defined
+4. Format ALL code in a single ```cpp code block.
+5. Focus specifically on the technique described in the database.
+6. COMPILATION SAFETY: Ensure all constants are properly defined.
 7. Summarize the optimization technique applied and the reason for the improvement before the code.
+8. Do not attempt to write the code to disk, as you dont have permission to do so, simply output tthe generated code to console only.
 
 APPROACH:
-1. Apply requested the optimization technique systematically
+1. Apply the requested optimization technique systematically.
 2. If applying a new technique not yet attempted in the code, start with the most minimal example, focusing on correctness.
-4. Please use the reference code provided in the prompt as helper functions for your optimized kernel.
-3. Generate optimized code addressing the identified performance issues
+3. Please use the reference code provided in the prompt as helper functions for your optimized kernel.
+4. Generate optimized code addressing the identified performance issues.
 
-  "#
-    ).to_string()
+"#).to_string()
 }
 
-pub fn get_db_header() -> Result<String, Box<dyn std::error::Error>> {
-    let content = fs::read_to_string("kernelbench-cuda/data/optimization_database_header.md")?;
-    Ok(content)
-}
+pub fn get_combined(state_category: String) -> Result<String, Box<dyn std::error::Error>> {
+    let header = fs::read_to_string("kernelbench-cuda/data/optimization_database_header.md")?;
+    let footer = fs::read_to_string("kernelbench-cuda/data/optimization_database_footer.md")?;
+    let combined = format!(
+        r#"{header}
+{state_category}
+{footer}"#
+    );
 
-pub fn get_db_footer() -> Result<String, Box<dyn std::error::Error>> {
-    let content = fs::read_to_string("kernelbench-cuda/data/optimization_database_footer.md")?;
-    Ok(content)
+    Ok(combined)
 }

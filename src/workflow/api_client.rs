@@ -5,9 +5,8 @@ use std::fs;
 
 // this is a complex post as it will call the endpoint
 pub async fn process_post_call(
-    name: String,
+    file_name: Option<String>,
     url: String,
-    title: String,
     data: String,
 ) -> Result<String, Box<dyn std::error::Error>> {
     let client = Client::builder()
@@ -27,7 +26,10 @@ pub async fn process_post_call(
         StatusCode::OK => {
             // only if we have success can we then save the document
             let doc_content = String::from_utf8(response.to_vec())?;
-            fs::write(format!("logs/{}/{}", name, title), doc_content.clone())?;
+            if file_name.is_some() {
+                // safe to unwrap
+                fs::write(file_name.unwrap(), doc_content.clone())?;
+            }
             doc_content
         }
         _ => {

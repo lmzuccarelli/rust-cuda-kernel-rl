@@ -8,7 +8,10 @@ use std::time::Instant;
 
 pub trait CompileInterface {
     async fn run(work_item: WorkItem) -> Result<String, Box<dyn std::error::Error>>;
-    async fn cuda_kernel(work_item: WorkItem) -> Result<String, Box<dyn std::error::Error>>;
+    async fn cuda_kernel(
+        work_item: WorkItem,
+        write: bool,
+    ) -> Result<String, Box<dyn std::error::Error>>;
 }
 
 pub struct Compile {}
@@ -19,7 +22,10 @@ impl CompileInterface for Compile {
         let start = Instant::now();
 
         // create output directory
-        fs::create_dir_all(format!("out/{}/build", work_item.name))?;
+        fs::create_dir_all(format!(
+            "out/{}/{}/build",
+            work_item.name, work_item.target_dir
+        ))?;
 
         // create the cuda_model.cuh file
         // we use regex to extract it
@@ -28,7 +34,10 @@ impl CompileInterface for Compile {
         let re = Regex::new("(void launch_gpu_implementation\\([\\n\\s,\\/\\(\\)a-zA-Z0-9*_]*;)")?;
         for cap in re.captures_iter(&content) {
             fs::write(
-                format!("out/{}/cuda_model.cuh", work_item.name),
+                format!(
+                    "out/{}/{}/cuda_model.cuh",
+                    work_item.name, work_item.target_dir
+                ),
                 cap[1].as_bytes(),
             )?;
         }
@@ -36,7 +45,7 @@ impl CompileInterface for Compile {
         // copy driver.cpp
         fs::copy(
             format!("kernelbench-cuda/{}/driver.cpp", work_item.name),
-            format!("out/{}/main.cpp", work_item.name),
+            format!("out/{}/{}/main.cpp", work_item.name, work_item.target_dir),
         )?;
 
         // read init.cu and insert #include cuda_model.cuh
@@ -46,16 +55,28 @@ impl CompileInterface for Compile {
         let res = kernel.rfind("#include").unwrap_or(0);
         let insert = "#include \"cuda_model.cuh\"\n";
         kernel.insert_str(res, insert);
-        fs::write(format!("out/{}/cuda_model.cu", work_item.name), &kernel)?;
+        fs::write(
+            format!(
+                "out/{}/{}/cuda_model.cu",
+                work_item.name, work_item.target_dir
+            ),
+            &kernel,
+        )?;
 
         // copy CMakeLists.txt
         fs::copy(
             "kernelbench-cuda/CMakeLists.txt",
-            format!("out/{}/CMakeLists.txt", work_item.name),
+            format!(
+                "out/{}/{}/CMakeLists.txt",
+                work_item.name, work_item.target_dir
+            ),
         )?;
 
         // step 1 - call cmake to build MakeFile
-        env::set_current_dir(format!("out/{}/build", work_item.name))?;
+        env::set_current_dir(format!(
+            "out/{}/{}/build",
+            work_item.name, work_item.target_dir
+        ))?;
         let output = Command::new("cmake")
             .arg("-DCMAKE_PREFIX_PATH=/usr/local/libtorch")
             .arg("-DCMAKE_BUILD_TYPE=Release")
@@ -68,7 +89,7 @@ impl CompileInterface for Compile {
         let elapsed = start.elapsed();
         // preserve output
         println!("{}", stdout);
-        log::info!("completed task in {:?}", elapsed);
+        log::info!("[run] compile : completed task in {:?}", elapsed);
 
         if !output.status.success() {
             // return the first failure (fail fast)
@@ -88,7 +109,7 @@ impl CompileInterface for Compile {
         let elapsed = start.elapsed();
         // preserve output
         println!("{}", stdout);
-        log::info!("completed task in {:?}", elapsed);
+        log::info!("[run] compile build : completed task in {:?}", elapsed);
 
         if !output.status.success() {
             // return the first failure (fail fast)
@@ -100,11 +121,22 @@ impl CompileInterface for Compile {
         Ok(stdout)
     }
 
-    async fn cuda_kernel(work_item: WorkItem) -> Result<String, Box<dyn std::error::Error>> {
-        let kernel = fs::read_to_string(format!(
-            "{}/kernelbench-cuda/{}/init.cu",
-            work_item.working_dir, work_item.name
-        ))?;
+    async fn cuda_kernel(
+        work_item: WorkItem,
+        write: bool,
+    ) -> Result<String, Box<dyn std::error::Error>> {
+        let mut kernel = String::new();
+        let dir = format!(
+            "{}/out/{}/{}",
+            work_item.working_dir, work_item.name, work_item.target_dir
+        );
+        let file = format!("{}/cuda_mode.cu", dir);
+        if write {
+            fs::create_dir_all(dir)?;
+            fs::write(file, work_item.code)?;
+        } else {
+            kernel = fs::read_to_string(&file)?;
+        }
         Ok(kernel)
     }
 }
