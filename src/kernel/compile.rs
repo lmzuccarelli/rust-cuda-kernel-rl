@@ -126,11 +126,8 @@ impl CompileInterface for Compile {
         write: bool,
     ) -> Result<String, Box<dyn std::error::Error>> {
         let mut kernel = String::new();
-        let dir = format!(
-            "{}/out/{}/{}",
-            work_item.working_dir, work_item.name, work_item.target_dir
-        );
-        let file = format!("{}/cuda_mode.cu", dir);
+        let dir = format!("{}/{}", work_item.working_dir, work_item.target_dir);
+        let file = format!("{}/{}.cu", dir, work_item.name);
         if write {
             fs::create_dir_all(dir)?;
             fs::write(file, work_item.code)?;

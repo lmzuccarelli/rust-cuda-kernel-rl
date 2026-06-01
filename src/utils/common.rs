@@ -32,24 +32,24 @@ pub async fn extract_code_all(
                             Ok(contents) => {
                                 let code = extract_code(contents)?;
                                 if !code.is_empty() {
-                                    let f = file.clone();
-                                    let vec_file = f.split("_llm_response").collect::<Vec<&str>>();
-                                    log::info!("file      : {}", f);
-                                    log::info!("split     : {}", vec_file[0]);
-                                    log::info!("file name : {:?}", obj.path().file_name());
-                                    let target_dir = vec_file[0].replace("log", "out");
+                                    let vec_parts = file.split("step_").collect::<Vec<&str>>();
+                                    let target_dir = vec_parts[0];
+                                    let file_name = format!(
+                                        "step_{}",
+                                        vec_parts[1].replace("_llm_response.txt", ".cu")
+                                    );
+                                    log::info!("target_dir : {}", target_dir);
+                                    log::info!("file_name  : {}", file_name);
                                     // write to local disk
-                                    let _ = fs::write(format!("{}.cu", vec_file[0]), code.clone());
-                                    log::info!(
-                                        "[extract_code_all] code extracted to {}.cu",
-                                        vec_file[0]
+                                    let _ = fs::write(
+                                        format!("{}/{}", target_dir, file_name),
+                                        code.clone(),
                                     );
                                     // prepare for upload
                                     let payload = format!(
-                                        r##"{{ "name": "{}", "working_dir": "{}", "gpu_arch": "{}", "code": "{:?}" , "target_dir": "{}" }}"##,
-                                        "cuda_model.cu", working_dir, gpu_arch, code, target_dir
+                                        r##"{{ "name": "{}", "working_dir": "{}", "gpu_arch": "{}", "code": {:?} , "target_dir": "{}" }}"##,
+                                        file_name, working_dir, gpu_arch, code, target_dir
                                     );
-                                    // log::debug!("{}", payload);
                                     process_post_call(None, url.clone(), payload).await?;
                                 } else {
                                     log::warn!("[extract_code_all] code not found {}", file);
