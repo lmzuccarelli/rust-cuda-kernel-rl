@@ -9,7 +9,7 @@
   ],
   "working_dir": "/home/lzuccarelli/Projects/rust-cuda-kernel-rl",
   "max_trajectories": 10,
-  "flow_control": 64,
+  "flow_control": 128,
   "gpu_arch": 86,
   "test": true
 }

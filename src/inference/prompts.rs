@@ -579,11 +579,12 @@ CRITICAL REQUIREMENTS:
    - #define constants - DEFINE ALL CONSTANTS BEFORE USING THEM
    - Complete __global__ kernel function with proper signature
    - Complete launch_gpu_implementation function
+   - Generate full completed cuda code (no code snippets)
 4. Format ALL code in a single ```cpp code block.
 5. Focus specifically on the technique described in the database.
 6. COMPILATION SAFETY: Ensure all constants are properly defined.
 7. Summarize the optimization technique applied and the reason for the improvement before the code.
-8. Do not attempt to write the code to disk, as you dont have permission to do so, simply output tthe generated code to console only.
+8. DO NOT attempt to write the code to disk, as you don't have permission to do so, simply output the generated code to console only.
 
 APPROACH:
 1. Apply the requested optimization technique systematically.

@@ -1,10 +1,11 @@
 use crate::config::load::Parameters;
 use crate::inference::prompts::{
     get_available_optimizations, get_combined, get_optimization_plan,
-    get_performance_state_category, get_profile_prompt, get_task_generate_code_prompt,
+    get_performance_state_category, get_profile_prompt, get_state_match_prompt,
+    get_task_generate_code_prompt,
 };
 use crate::kernel::profile::{Profile, ProfileInterface};
-use crate::utils::common::extract_code_all;
+use crate::utils::common::{extract_code_all, pick_weighted};
 use crate::workflow::api_client::{process_get_call, process_post_call};
 use custom_logger as log;
 use futures::stream::FuturesUnordered;
@@ -21,7 +22,7 @@ pub trait ControllerInterface {
 
 pub struct Controller {}
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, PartialOrd)]
 pub struct OptimizationPlan {
     pub technique: String,
     pub relevance_score: f32,
@@ -53,12 +54,17 @@ impl ControllerInterface for Controller {
             let mut code = String::new();
             let mut ncu_report = String::new();
             let mut state = String::new();
+            let mut match_state = String::new();
             let mut json_plan = String::new();
 
             log::trace!("[execute_flow] initial elapsed_cycles {}", elapsed_cycles);
             log::trace!("[execute_flow] initial code           {}", code);
             log::trace!("[execute_flow] initial ncu_report     {}", ncu_report);
             log::trace!("[execute_flow] initial state          {}", state);
+            log::trace!(
+                "[execute_flow] initial match_state          {}",
+                match_state
+            );
             log::trace!("[execute_flow] initial json_plan      {}", json_plan);
 
             match parameters.test {
@@ -74,8 +80,7 @@ impl ControllerInterface for Controller {
                     let local_baseline_dir = baseline_dir.replace("/out/", "/logs/");
 
                     if x & 2u8 == 2 {
-                        // get all baseline artifacts first
-                        // first call the compile endpoint
+                        // call the compile endpoint
                         log::info!("[execute_flow] baseline calling compile cuda kernel endpoint");
                         let url = format!("{}/v1/compile", parameters.compile_server_url);
                         let file_name = format!("{}/compile.txt", local_baseline_dir);
@@ -131,6 +136,22 @@ impl ControllerInterface for Controller {
                     }
 
                     if x & 32u8 == 32 {
+                        log::info!("[execute_flow] baseline calling llm endpoint (match state)");
+                        // set the initial prompt for the llm
+                        let prompt = get_state_match_prompt(state.clone());
+                        // call the llm endpoint
+                        let url = format!("{}/v1/prompt", parameters.llm_server_url);
+                        let file_name =
+                            format!("{}/llm_match_state_response.txt", local_baseline_dir);
+                        match_state = process_post_call(Some(file_name), url, prompt).await?;
+                    } else {
+                        match_state = fs::read_to_string(format!(
+                            "{}/llm_match_state_response.txt",
+                            local_baseline_dir
+                        ))?;
+                    }
+
+                    if x & 64u8 == 64 {
                         log::info!(
                             "[execute_flow] baseline calling llm endpoint (optimization plan)"
                         );
@@ -138,7 +159,7 @@ impl ControllerInterface for Controller {
                         // get the 9 top matching optimizations in json format from the llm
                         let avail_opt = get_available_optimizations();
                         let prompt_op = get_optimization_plan(
-                            parameters.max_trajectories - 1,
+                            parameters.max_trajectories,
                             state.clone(),
                             code.clone(),
                             avail_opt,
@@ -154,22 +175,26 @@ impl ControllerInterface for Controller {
                         ))?;
                     }
 
-                    if x & 64u8 == 64 {
+                    if x & 128u8 == 128 {
                         let start = Instant::now();
                         log::info!("[execute_flow] executing rollout");
                         let json_plan_updated = json_plan.replace("```json", "");
                         let plans =
                             serde_json::from_str::<Vec<OptimizationPlan>>(&json_plan_updated)?;
                         let category = Profile::get_category(state)?;
-                        let mut count = 0;
+                        //let mut count = 0;
                         let mut futs = FuturesUnordered::new();
-                        for plan in plans.iter() {
-                            count += 1;
+                        for x in 0..parameters.max_trajectories {
+                            //for plan in plans.iter() {
+                            let plan = pick_weighted(plans.clone())?;
                             // Generate a shorter 8-character ID (6 bytes)
                             let short = short_id_with_bytes(6)?;
                             let trajectory_dir = format!(
                                 "{}/logs/{}/rl-ncu/trajectory_{}_{}",
-                                parameters.working_dir, item, count, short
+                                parameters.working_dir,
+                                item,
+                                x + 1,
+                                short
                             );
                             log::info!(
                                 "[execute_flow] executing trajectory {} for technique {}",
@@ -306,6 +331,15 @@ impl ControllerInterface for Controller {
                         parameters.gpu_arch,
                     )
                     .await?;
+
+                    for _x in 0..10 {
+                        let pick = pick_weighted(plans.clone())?;
+                        log::info!(
+                            "[execute_flow] weighted plan {} {}",
+                            pick.technique,
+                            pick.relevance_score
+                        );
+                    }
                 }
             }
         }

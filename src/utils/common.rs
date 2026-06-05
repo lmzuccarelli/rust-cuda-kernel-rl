@@ -1,5 +1,8 @@
 use crate::workflow::api_client::process_post_call;
+use crate::workflow::controller::OptimizationPlan;
 use custom_logger as log;
+use rand::distr::weighted::WeightedIndex;
+use rand::prelude::*;
 use std::fs;
 use walkdir::WalkDir;
 
@@ -40,10 +43,17 @@ pub async fn extract_code_all(
                                     log::info!("target_dir : {}", target_dir);
                                     log::info!("file_name  : {}", file_name);
                                     // write to local disk
-                                    let _ = fs::write(
-                                        format!("{}/{}", target_dir, file_name),
+                                    let res = fs::write(
+                                        format!("{}/{}", vec_parts[0], file_name),
                                         code.clone(),
                                     );
+                                    match res {
+                                        Ok(_) => log::debug!(
+                                            "[extract_code_all] file {} saved to local disk",
+                                            file_name
+                                        ),
+                                        Err(e) => log::error!("[extract_code_all] {}", e),
+                                    }
                                     // prepare for upload
                                     let payload = format!(
                                         r##"{{ "name": "{}", "gpu_arch": "{}", "code": {:?} , "target_dir": "{}", "working_dir": "{}" }}"##,
@@ -67,4 +77,19 @@ pub async fn extract_code_all(
         }
     }
     Ok(())
+}
+
+pub fn pick_weighted(
+    plans: Vec<OptimizationPlan>,
+) -> Result<OptimizationPlan, Box<dyn std::error::Error>> {
+    let weights = plans
+        .clone()
+        .iter()
+        .map(|x| x.relevance_score.powi(3))
+        .collect::<Vec<f32>>();
+    log::debug!("[pick_weighted] {:?}", weights);
+    let dist = WeightedIndex::new(weights)?;
+    let mut rng = rand::rng();
+    let pick = plans[dist.sample(&mut rng)].clone();
+    Ok(pick)
 }
