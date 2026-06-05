@@ -14,7 +14,7 @@ impl ExecuteInterface for Execute {
         log::debug!("[run] executing cuda-kernel binary");
         let start = Instant::now();
 
-        let output = Command::new(format!("out/{}/build/main", work_item.name)).output()?;
+        let output = Command::new(format!("{}/build/main", work_item.target_dir)).output()?;
 
         let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
         let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();

@@ -21,9 +21,9 @@ pub struct WorkItem {
     pub name: String,
     pub gpu_arch: String,
     pub prompt: Option<String>,
-    pub working_dir: String,
     pub target_dir: String,
-    pub code: String,
+    pub working_dir: String,
+    pub code: Option<String>,
 }
 
 pub trait ConfigInterface {

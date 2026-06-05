@@ -22,10 +22,7 @@ impl CompileInterface for Compile {
         let start = Instant::now();
 
         // create output directory
-        fs::create_dir_all(format!(
-            "out/{}/{}/build",
-            work_item.name, work_item.target_dir
-        ))?;
+        fs::create_dir_all(format!("{}/build", work_item.target_dir))?;
 
         // create the cuda_model.cuh file
         // we use regex to extract it
@@ -34,10 +31,7 @@ impl CompileInterface for Compile {
         let re = Regex::new("(void launch_gpu_implementation\\([\\n\\s,\\/\\(\\)a-zA-Z0-9*_]*;)")?;
         for cap in re.captures_iter(&content) {
             fs::write(
-                format!(
-                    "out/{}/{}/cuda_model.cuh",
-                    work_item.name, work_item.target_dir
-                ),
+                format!("{}/cuda_model.cuh", work_item.target_dir),
                 cap[1].as_bytes(),
             )?;
         }
@@ -45,7 +39,7 @@ impl CompileInterface for Compile {
         // copy driver.cpp
         fs::copy(
             format!("kernelbench-cuda/{}/driver.cpp", work_item.name),
-            format!("out/{}/{}/main.cpp", work_item.name, work_item.target_dir),
+            format!("{}/main.cpp", work_item.target_dir),
         )?;
 
         // read init.cu and insert #include cuda_model.cuh
@@ -55,28 +49,16 @@ impl CompileInterface for Compile {
         let res = kernel.rfind("#include").unwrap_or(0);
         let insert = "#include \"cuda_model.cuh\"\n";
         kernel.insert_str(res, insert);
-        fs::write(
-            format!(
-                "out/{}/{}/cuda_model.cu",
-                work_item.name, work_item.target_dir
-            ),
-            &kernel,
-        )?;
+        fs::write(format!("{}/cuda_model.cu", work_item.target_dir), &kernel)?;
 
         // copy CMakeLists.txt
         fs::copy(
             "kernelbench-cuda/CMakeLists.txt",
-            format!(
-                "out/{}/{}/CMakeLists.txt",
-                work_item.name, work_item.target_dir
-            ),
+            format!("{}/CMakeLists.txt", work_item.target_dir),
         )?;
 
         // step 1 - call cmake to build MakeFile
-        env::set_current_dir(format!(
-            "out/{}/{}/build",
-            work_item.name, work_item.target_dir
-        ))?;
+        env::set_current_dir(format!("{}/build", work_item.target_dir))?;
         let output = Command::new("cmake")
             .arg("-DCMAKE_PREFIX_PATH=/usr/local/libtorch")
             .arg("-DCMAKE_BUILD_TYPE=Release")
@@ -126,11 +108,12 @@ impl CompileInterface for Compile {
         write: bool,
     ) -> Result<String, Box<dyn std::error::Error>> {
         let mut kernel = String::new();
-        let dir = format!("{}/{}", work_item.working_dir, work_item.target_dir);
-        let file = format!("{}/{}.cu", dir, work_item.name);
-        if write {
+        let dir = format!("{}", work_item.target_dir);
+        let file = format!("{}/{}", dir, work_item.name);
+        if write && work_item.code.is_some() {
+            println!("DEBUG LMZ writing to {}", dir);
             fs::create_dir_all(dir)?;
-            fs::write(file, work_item.code)?;
+            fs::write(file, work_item.code.unwrap_or("".to_string()))?;
         } else {
             kernel = fs::read_to_string(&file)?;
         }

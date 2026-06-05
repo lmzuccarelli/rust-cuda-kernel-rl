@@ -1,11 +1,10 @@
 use crate::config::load::Parameters;
 use crate::inference::prompts::{
-    get_available_optimizations, get_best_optimization_prompt, get_combined, get_optimization_plan,
-    get_performance_state_category, get_profile_prompt, get_state_match_prompt,
-    get_task_generate_code_prompt,
+    get_available_optimizations, get_combined, get_optimization_plan,
+    get_performance_state_category, get_profile_prompt, get_task_generate_code_prompt,
 };
 use crate::kernel::profile::{Profile, ProfileInterface};
-use crate::utils::common::{extract_code, extract_code_all};
+use crate::utils::common::extract_code_all;
 use crate::workflow::api_client::{process_get_call, process_post_call};
 use custom_logger as log;
 use futures::stream::FuturesUnordered;
@@ -65,37 +64,37 @@ impl ControllerInterface for Controller {
             match parameters.test {
                 false => {
                     let x = parameters.flow_control;
-                    let baseline_dir = format!("logs/{}/rl-ncu/baseline", item);
+                    let baseline_dir =
+                        format!("{}/out/{}/rl-ncu/baseline", parameters.working_dir, item);
                     let payload = format!(
                         r##"{{ "name": "{}", "working_dir": "{}", "gpu_arch": "{}" , "target_dir": "{}" }}"##,
-                        item,
-                        parameters.working_dir.clone(),
-                        parameters.gpu_arch,
-                        "rl-ncu/baseline"
+                        parameters.name, parameters.working_dir, parameters.gpu_arch, baseline_dir
                     );
+                    // as we are saving locally to replay buffer , change out to logs
+                    let local_baseline_dir = baseline_dir.replace("/out/", "/logs/");
 
                     if x & 2u8 == 2 {
                         // get all baseline artifacts first
                         // first call the compile endpoint
                         log::info!("[execute_flow] baseline calling compile cuda kernel endpoint");
                         let url = format!("{}/v1/compile", parameters.compile_server_url);
-                        let file_name = format!("{}/compile.txt", baseline_dir);
+                        let file_name = format!("{}/compile.txt", local_baseline_dir);
                         process_post_call(Some(file_name), url, payload.clone()).await?;
 
                         // download cuda kernel (init.cu)
                         log::info!("[execute_flow] baseline downloading cuda kernel");
                         let url = format!("{}/v1/cuda-kernel", parameters.compile_server_url);
-                        let file_name = format!("{}/init.cu", baseline_dir);
+                        let file_name = format!("{}/init.cu", local_baseline_dir);
                         code = process_post_call(Some(file_name), url, payload.clone()).await?;
                     } else {
-                        code = fs::read_to_string(format!("{}/init.cu", baseline_dir))?;
+                        code = fs::read_to_string(format!("{}/init.cu", local_baseline_dir))?;
                     }
 
                     if x & 4u8 == 4 {
                         // call the execute endpoint
                         log::info!("[execute_flow] baseline calling execute cuda kernel endpoint");
                         let url = format!("{}/v1/execute", parameters.gpu_server_url);
-                        let file_name = format!("{}/execute.txt", baseline_dir);
+                        let file_name = format!("{}/execute.txt", local_baseline_dir);
                         process_post_call(Some(file_name), url, payload.clone()).await?;
                     }
 
@@ -103,10 +102,11 @@ impl ControllerInterface for Controller {
                         // call the nvidia ncu profile endpoint
                         log::info!("[execute_flow] baseline calling profile cuda kernel endpoint");
                         let url = format!("{}/v1/profile", parameters.gpu_server_url);
-                        let file_name = format!("{}/profile.txt", baseline_dir);
+                        let file_name = format!("{}/profile.txt", local_baseline_dir);
                         ncu_report = process_post_call(Some(file_name), url, payload).await?;
                     } else {
-                        ncu_report = fs::read_to_string(format!("{}/profile.txt", baseline_dir))?;
+                        ncu_report =
+                            fs::read_to_string(format!("{}/profile.txt", local_baseline_dir))?;
                     }
 
                     elapsed_cycles = Profile::get_elapsed_cycles(ncu_report.clone())?;
@@ -121,11 +121,13 @@ impl ControllerInterface for Controller {
                             get_profile_prompt(code.clone(), ncu_report.clone()).replace("\n", "");
                         // call the llm endpoint
                         let url = format!("{}/v1/prompt", parameters.llm_server_url);
-                        let file_name = format!("{}/llm_state_response.txt", baseline_dir);
+                        let file_name = format!("{}/llm_state_response.txt", local_baseline_dir);
                         state = process_post_call(Some(file_name), url, prompt).await?;
                     } else {
-                        state =
-                            fs::read_to_string(format!("{}/llm_state_response.txt", baseline_dir))?;
+                        state = fs::read_to_string(format!(
+                            "{}/llm_state_response.txt",
+                            local_baseline_dir
+                        ))?;
                     }
 
                     if x & 32u8 == 32 {
@@ -143,11 +145,13 @@ impl ControllerInterface for Controller {
                         );
                         // call the llm endpoint
                         let url = format!("{}/v1/prompt", parameters.llm_server_url);
-                        let file_name = format!("{}/optimization-plan.json", baseline_dir);
+                        let file_name = format!("{}/optimization-plan.json", local_baseline_dir);
                         json_plan = process_post_call(Some(file_name), url, prompt_op).await?;
                     } else {
-                        json_plan =
-                            fs::read_to_string(format!("{}/optimization-plan.json", baseline_dir))?;
+                        json_plan = fs::read_to_string(format!(
+                            "{}/optimization-plan.json",
+                            local_baseline_dir
+                        ))?;
                     }
 
                     if x & 64u8 == 64 {
@@ -163,8 +167,10 @@ impl ControllerInterface for Controller {
                             count += 1;
                             // Generate a shorter 8-character ID (6 bytes)
                             let short = short_id_with_bytes(6)?;
-                            let trajectory_dir =
-                                format!("logs/{}/rl-ncu/trajectory_{}_{}", item, count, short);
+                            let trajectory_dir = format!(
+                                "{}/logs/{}/rl-ncu/trajectory_{}_{}",
+                                parameters.working_dir, item, count, short
+                            );
                             log::info!(
                                 "[execute_flow] executing trajectory {} for technique {}",
                                 trajectory_dir,
@@ -188,7 +194,7 @@ impl ControllerInterface for Controller {
                             )?;
 
                             let url = format!("{}/v1/prompt", parameters.llm_server_url);
-                            // this will always start with step 0, then within the complex function
+                            // this will always start with step 0, then within the complex flow
                             // each new step (until max.rollout) will be added
                             let file_name = format!(
                                 "{}/step_0_{}_llm_response.txt",
@@ -198,11 +204,14 @@ impl ControllerInterface for Controller {
                         }
                         // Wait for the remaining to finish.
                         while let Some(response) = futs.next().await {
-                            log::debug!("{}", &response.unwrap()[..100]);
+                            match response {
+                                Ok(_) => log::info!("[execute_flow] call succeeded"),
+                                Err(e) => log::error!("[execute_flow] call failed {}", e),
+                            }
                         }
 
                         let elapsed = start.elapsed();
-                        log::info!("[execute flow] completed rollout in {:?}", elapsed);
+                        log::info!("[execute_flow] completed rollout in {:?}", elapsed);
                     }
 
                     /*
@@ -289,17 +298,9 @@ impl ControllerInterface for Controller {
 
                     println!();
 
-                    let input = fs::read(format!(
-                        "logs/{}/rl-ncu/trajectory_1__KMbpkXv/step_0_shared_memory_tiling_llm_response.txt",
-                        item
-                    ))?;
-                    let result = extract_code(String::from_utf8(input)?)?;
-                    log::info!("{}", result);
-
-                    println!();
-
+                    let base_dir = format!("{}/logs/{}/rl-ncu", parameters.working_dir, item);
                     extract_code_all(
-                        item.to_string(),
+                        base_dir.clone(),
                         parameters.working_dir.clone(),
                         format!("{}/v1/upload", parameters.compile_server_url),
                         parameters.gpu_arch,

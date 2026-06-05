@@ -15,13 +15,12 @@ pub fn extract_code(input: String) -> Result<String, Box<dyn std::error::Error>>
 }
 
 pub async fn extract_code_all(
-    item: String,
+    base_dir: String,
     working_dir: String,
     url: String,
     gpu_arch: u8,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let dir = format!("logs/{}/rl-ncu", item);
-    for e in WalkDir::new(dir) {
+    for e in WalkDir::new(base_dir) {
         match e {
             Ok(obj) => {
                 if obj.path().is_file() {
@@ -33,7 +32,7 @@ pub async fn extract_code_all(
                                 let code = extract_code(contents)?;
                                 if !code.is_empty() {
                                     let vec_parts = file.split("step_").collect::<Vec<&str>>();
-                                    let target_dir = vec_parts[0];
+                                    let target_dir = vec_parts[0].replace("logs", "out");
                                     let file_name = format!(
                                         "step_{}",
                                         vec_parts[1].replace("_llm_response.txt", ".cu")
@@ -47,8 +46,8 @@ pub async fn extract_code_all(
                                     );
                                     // prepare for upload
                                     let payload = format!(
-                                        r##"{{ "name": "{}", "working_dir": "{}", "gpu_arch": "{}", "code": {:?} , "target_dir": "{}" }}"##,
-                                        file_name, working_dir, gpu_arch, code, target_dir
+                                        r##"{{ "name": "{}", "gpu_arch": "{}", "code": {:?} , "target_dir": "{}", "working_dir": "{}" }}"##,
+                                        file_name, gpu_arch, code, target_dir, working_dir
                                     );
                                     process_post_call(None, url.clone(), payload).await?;
                                 } else {
