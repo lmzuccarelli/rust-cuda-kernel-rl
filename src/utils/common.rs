@@ -79,6 +79,39 @@ pub async fn extract_code_all(
     Ok(())
 }
 
+pub async fn walk_trajectories(base_dir: String) -> Result<(), Box<dyn std::error::Error>> {
+    for e in WalkDir::new(base_dir) {
+        match e {
+            Ok(obj) => {
+                if obj.path().is_file() {
+                    let file = obj.path().to_string_lossy();
+                    if file.contains(".cu") && file.contains("trajectory_") {
+                        let contents_res = fs::read_to_string(file.to_string());
+                        match contents_res {
+                            Ok(_) => {
+                                let parts = file.split("/").collect::<Vec<&str>>();
+                                let target_dir =
+                                    format!("/{}", parts[1..parts.len() - 1].join("/"));
+                                log::info!(
+                                    "[walk_trajectories] target_dir {}",
+                                    target_dir.replace("/logs/", "/out/")
+                                );
+                            }
+                            Err(e) => {
+                                log::error!("[walk_trajectories] error reading {}", e);
+                            }
+                        }
+                    }
+                }
+            }
+            Err(e) => {
+                log::error!("[walk_trajectories] error : {}", e);
+            }
+        }
+    }
+    Ok(())
+}
+
 pub fn pick_weighted(
     plans: Vec<OptimizationPlan>,
 ) -> Result<OptimizationPlan, Box<dyn std::error::Error>> {

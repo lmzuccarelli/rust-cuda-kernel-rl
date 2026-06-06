@@ -172,7 +172,7 @@ pub async fn execute(
         if !parameters.test {
             Controller::get_health(parameters.clone()).await?;
         }
-        Controller::execute_flow(parameters).await?;
+        Controller::execute_agent_flow(parameters).await?;
         Ok(())
     } else {
         let port = get_port(command.clone(), parameters)?;

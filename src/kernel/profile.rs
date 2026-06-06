@@ -20,14 +20,20 @@ pub struct Profile {}
 
 impl ProfileInterface for Profile {
     async fn run(work_item: WorkItem) -> Result<String, Box<dyn std::error::Error>> {
-        log::debug!("[run] profiling cuda-kernel");
         let start = Instant::now();
 
         // ensure we read and set LD_LIBARAY_PATH envar
         let ld_lib = env::var("LD_LIBRARY_PATH")?;
 
         // get the kernel name
-        let kernel = fs::read_to_string(format!("out/{}/cuda_model.cu", work_item.name))?;
+        let kernel_file = match work_item.kernel_name {
+            Some(name) => format!("{}/{}", work_item.target_dir, name),
+            None => {
+                return Err(Box::from("[run] profile kernel name is empty"));
+            }
+        };
+        log::debug!("[run] profile kernel {}", kernel_file);
+        let kernel = fs::read_to_string(kernel_file)?;
         let re = Regex::new("[_]{2}global[_]{2}\\svoid\\s([a-zA-Z0-9_]*)")?;
         let mut kernel_name = String::new();
         for cap in re.captures_iter(&kernel) {
@@ -39,14 +45,14 @@ impl ProfileInterface for Profile {
         }
 
         // for profiling we set the current working directory
-        env::set_current_dir(format!("out/{}/build", work_item.name))?;
+        env::set_current_dir(format!("{}/build", work_item.target_dir))?;
         let output = Command::new("sudo")
             .arg(format!("LD_LIBRARY_PATH={}", ld_lib))
             .arg("ncu")
             .arg("--set")
             .arg("full")
             .arg("-k")
-            .arg(kernel_name)
+            .arg(kernel_name.clone())
             .arg("-o")
             .arg("profile")
             .arg("-f")
@@ -84,7 +90,7 @@ impl ProfileInterface for Profile {
         }
 
         // write the final report to disk
-        fs::write("output.profile", stdout.clone())?;
+        fs::write(format!("{}.profile", kernel_name), stdout.clone())?;
 
         // restore working dir
         env::set_current_dir(work_item.working_dir)?;
@@ -96,7 +102,7 @@ impl ProfileInterface for Profile {
         let mut elapsed_cycles = 0;
         for cap in re.captures_iter(&ncu_report) {
             elapsed_cycles = cap[1].to_string().replace(",", "").parse::<u64>()?;
-            log::trace!("[get_initial_elapsed_cycles] {}", elapsed_cycles);
+            log::trace!("[get_elapsed_cycles] {}", elapsed_cycles);
         }
         Ok(elapsed_cycles)
     }
@@ -115,7 +121,11 @@ impl ProfileInterface for Profile {
         baseline: u64,
         current: u64,
     ) -> Result<(f64, f64), Box<dyn std::error::Error>> {
-        let reward = (baseline - current) as f64 / baseline as f64;
+        let mut reward = (baseline - current) as f64 / baseline as f64;
+        if reward < 0.0 {
+            // add penalty for being worse
+            reward += -0.5
+        }
         let result = reward * 100.0;
         Ok((result, reward))
     }

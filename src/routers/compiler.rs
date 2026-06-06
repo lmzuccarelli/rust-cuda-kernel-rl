@@ -1,3 +1,4 @@
+use crate::config::load::WorkItem;
 use crate::kernel::compile::{Compile, CompileInterface};
 use custom_logger as log;
 use http::{Method, Request, Response, StatusCode};
@@ -42,7 +43,7 @@ pub async fn endpoints(req: Request<Incoming>) -> Result<Response<Full<Bytes>>, 
                 let work_item_res = serde_json::from_slice(&data);
                 match work_item_res {
                     Ok(work_item) => {
-                        let content_res = Compile::cuda_kernel(work_item, false).await;
+                        let content_res = Compile::cuda_kernel_rw(work_item, false).await;
                         match content_res {
                             Ok(content) => {
                                 *response.body_mut() = Full::from(content);
@@ -67,17 +68,17 @@ pub async fn endpoints(req: Request<Incoming>) -> Result<Response<Full<Bytes>>, 
             }
             x if x.contains("/v1/upload") => {
                 let data = req.into_body().collect().await?.to_bytes();
-                let work_item_res = serde_json::from_slice(&data);
+                let work_item_res = serde_json::from_slice::<WorkItem>(&data);
                 match work_item_res {
                     Ok(work_item) => {
-                        let content_res = Compile::cuda_kernel(work_item, true).await;
+                        let content_res = Compile::cuda_kernel_rw(work_item.clone(), true).await;
                         match content_res {
                             Ok(_) => {
                                 *response.status_mut() = StatusCode::OK;
                                 *response.body_mut() = Full::from("ok");
                             }
                             Err(err) => {
-                                log::error!("[endpoints] upload {}", err);
+                                log::error!("[endpoints] upload {} : {:?}", err, work_item);
                                 *response.status_mut() = StatusCode::INTERNAL_SERVER_ERROR;
                                 *response.body_mut() =
                                     Full::from(format!("[endpoints] upload error : {}\n", err));

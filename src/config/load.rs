@@ -23,6 +23,7 @@ pub struct WorkItem {
     pub prompt: Option<String>,
     pub target_dir: String,
     pub working_dir: String,
+    pub kernel_name: Option<String>,
     pub code: Option<String>,
 }
 

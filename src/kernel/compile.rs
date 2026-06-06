@@ -8,7 +8,7 @@ use std::time::Instant;
 
 pub trait CompileInterface {
     async fn run(work_item: WorkItem) -> Result<String, Box<dyn std::error::Error>>;
-    async fn cuda_kernel(
+    async fn cuda_kernel_rw(
         work_item: WorkItem,
         write: bool,
     ) -> Result<String, Box<dyn std::error::Error>>;
@@ -42,10 +42,13 @@ impl CompileInterface for Compile {
             format!("{}/main.cpp", work_item.target_dir),
         )?;
 
-        // read init.cu and insert #include cuda_model.cuh
+        // read kernel and insert #include cuda_model.cuh
         // then save to the out directory
-        let mut kernel =
-            fs::read_to_string(format!("kernelbench-cuda/{}/init.cu", work_item.name))?;
+        let kernel_name = match work_item.kernel_name {
+            Some(name) => format!("{}/{}", work_item.target_dir, name),
+            None => format!("kernelbench-cuda/{}/init.cu", work_item.name),
+        };
+        let mut kernel = fs::read_to_string(kernel_name)?;
         let res = kernel.rfind("#include").unwrap_or(0);
         let insert = "#include \"cuda_model.cuh\"\n";
         kernel.insert_str(res, insert);
@@ -103,19 +106,28 @@ impl CompileInterface for Compile {
         Ok(stdout)
     }
 
-    async fn cuda_kernel(
+    async fn cuda_kernel_rw(
         work_item: WorkItem,
         write: bool,
     ) -> Result<String, Box<dyn std::error::Error>> {
         let mut kernel = String::new();
         let dir = format!("{}", work_item.target_dir);
-        let file = format!("{}/{}", dir, work_item.name);
-        if write && work_item.code.is_some() {
-            println!("DEBUG LMZ writing to {}", dir);
-            fs::create_dir_all(dir)?;
-            fs::write(file, work_item.code.unwrap_or("".to_string()))?;
-        } else {
-            kernel = fs::read_to_string(&file)?;
+
+        // create output directory
+        fs::create_dir_all(format!("{}/build", work_item.target_dir))?;
+        match work_item.kernel_name {
+            Some(name) => {
+                let file = format!("{}/{}", dir, name);
+                if write && work_item.code.is_some() {
+                    fs::create_dir_all(dir)?;
+                    fs::write(file, work_item.code.unwrap_or("".to_string()))?;
+                } else {
+                    kernel = fs::read_to_string(&file)?;
+                }
+            }
+            None => {
+                return Err(Box::from("[cuda_kernel] upload kernel_name is empty"));
+            }
         }
         Ok(kernel)
     }
