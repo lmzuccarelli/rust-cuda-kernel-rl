@@ -256,6 +256,7 @@ CODE IMPLEMENTATION:
     "#).to_string()
 }
 
+#[allow(unused)]
 pub fn get_best_optimization_prompt(
     state_summary: String,
     available_optimizations: String,

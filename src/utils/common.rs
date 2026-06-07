@@ -79,6 +79,7 @@ pub async fn extract_code_all(
     Ok(())
 }
 
+#[allow(unused)]
 pub async fn walk_trajectories(base_dir: String) -> Result<(), Box<dyn std::error::Error>> {
     for e in WalkDir::new(base_dir) {
         match e {
@@ -125,4 +126,24 @@ pub fn pick_weighted(
     let mut rng = rand::rng();
     let pick = plans[dist.sample(&mut rng)].clone();
     Ok(pick)
+}
+
+pub fn find_cuda_file(dir: String) -> Result<String, Box<dyn std::error::Error>> {
+    let files = fs::read_dir(dir)?;
+    let mut cuda_file = String::new();
+    for f in files {
+        match f {
+            Ok(name) => {
+                let f = name.file_name().to_string_lossy().to_string();
+                if f.contains(".cu") {
+                    cuda_file = f;
+                    break;
+                }
+            }
+            Err(e) => {
+                return Err(Box::from(format!("[find_cuda_file] error {}", e)));
+            }
+        }
+    }
+    Ok(cuda_file)
 }

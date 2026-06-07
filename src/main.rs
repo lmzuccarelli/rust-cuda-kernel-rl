@@ -172,6 +172,7 @@ pub async fn execute(
         if !parameters.test {
             Controller::get_health(parameters.clone()).await?;
         }
+        Controller::execute_baseline_flow(parameters.clone()).await?;
         Controller::execute_agent_flow(parameters).await?;
         Ok(())
     } else {

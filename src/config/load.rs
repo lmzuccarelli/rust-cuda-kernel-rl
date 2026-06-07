@@ -11,7 +11,7 @@ pub struct Parameters {
     pub workflow_batch: Vec<String>,
     pub working_dir: String,
     pub gpu_arch: u8,
-    pub max_trajectories: u8,
+    pub max_rollout: u8,
     pub flow_control: u8,
     pub test: bool,
 }

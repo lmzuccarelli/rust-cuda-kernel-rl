@@ -8,8 +8,8 @@
     "level1/001_Square_matrix_multiplication"
   ],
   "working_dir": "/home/lzuccarelli/Projects/rust-cuda-kernel-rl",
-  "max_trajectories": 10,
+  "max_rollout": 10,
   "flow_control": 0,
   "gpu_arch": 86,
-  "test": true
+  "test": false;
 }
