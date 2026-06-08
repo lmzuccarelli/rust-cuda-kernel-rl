@@ -196,6 +196,32 @@ __shared__ float Bs[16][16];
 matmul_kernel<<<numBlocks, threadsPerBlock>>>(
 ```
 
+#### Expert Technique: register_blocking
+**Performance Impact**: 0% improvement
+**Confidence Score**: 0.86
+**Applicable States**: compute_throughput_saturated, memory_compute_balanced, memory_bandwidth_saturated
+
+**Implementation Hints**
+- Dont compound with shared memory tiling
+- Dont compound with tensor core WMMA utilization
+
+**Usage Examples**:
+```cuda
+#define TILE_M 16
+#define TILE_N 16
+#define TILE_K 16
+
+// Register blocking per-thread: each thread computes REG_M x REG_N subtile.
+// For simplicity REG_M==1 (one row per thread), REG_N==4 (4 columns per thread).
+#define REG_M 1
+#define REG_N 4
+
+// Thread block dimensions derived from tile and register blocking.
+#define THREADS_X (TILE_N / REG_N)  // 16 / 4 = 4
+#define THREADS_Y (TILE_M / REG_M)  // 16 / 1 = 16
+#define THREADS_PER_BLOCK (THREADS_X * THREADS_Y)
+```
+
 #### Expert Technique: register_optimization
 **Performance Impact**: 0% improvement
 **Confidence Score**: 0.80

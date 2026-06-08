@@ -12,7 +12,7 @@ pub async fn process_post_call(
 ) -> Result<String, Box<dyn std::error::Error>> {
     let client = Client::builder()
         .danger_accept_invalid_certs(true)
-        .timeout(Duration::new(300, 0))
+        .timeout(Duration::new(600, 0))
         .build()?;
     let client_response = client
         .post(url)
@@ -46,7 +46,7 @@ pub async fn process_post_call(
 pub async fn process_get_call(url: String) -> Result<String, Box<dyn std::error::Error>> {
     let client = Client::builder()
         .danger_accept_invalid_certs(true)
-        .timeout(Duration::new(300, 0))
+        .timeout(Duration::new(600, 0))
         .build()?;
     log::trace!("[process_get_call] {}", url);
     let client_response = client.get(url).send().await?;

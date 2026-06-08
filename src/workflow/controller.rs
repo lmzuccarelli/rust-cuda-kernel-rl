@@ -314,9 +314,14 @@ impl ControllerInterface for Controller {
                                 let url = format!("{}/v1/profile", parameters.gpu_server_url);
                                 let file_name = format!("{}/profile.txt", local_target_dir);
                                 // update ncu_report (override previous)
-                                ncu_report =
-                                    process_post_call(Some(file_name), url, payload.clone())
-                                        .await?;
+                                let profile_res =
+                                    process_post_call(Some(file_name), url, payload.clone()).await;
+                                match profile_res {
+                                    // update to the new profile else use the baseline
+                                    Ok(profile) => ncu_report = profile,
+                                    Err(e) => log::error!("[execute_agent_flow] profile {}", e),
+                                }
+
                                 let elapsed_cycles =
                                     Profile::get_elapsed_cycles(ncu_report.clone())?;
 
@@ -435,6 +440,7 @@ mod tests {
     use super::*;
     use crate::config::load::{ConfigInterface, ImplConfigInterface};
     use crate::utils::common::extract_code_all;
+    use regex::Regex;
     use std::fs;
 
     #[tokio::test]
@@ -521,6 +527,22 @@ mod tests {
         );
         let cuda_file = find_cuda_file(base_dir)?;
         log::info!("[execute_baseline_flow] testing cuda file {}", cuda_file);
+
+        let _kernel_test = r#"
+__global__ __launch_bounds__(THREADS_PER_BLOCK)
+void matmul_wmma_kernel(
+"#;
+        let re = Regex::new("[_]{2}global[_]{2}[_a-zA-Z()\\s]*\\svoid\\s([a-zA-Z0-9_]*)")?;
+        let kernel = fs::read_to_string(
+            "/home/lzuccarelli/Projects/rust-cuda-kernel-rl/logs/level1/001_Square_matrix_multiplication/rl-ncu/trajectory_1_mINMOfqW/step_3/tensor_core_utilization.cu",
+        )?;
+
+        let mut kernel_name;
+        println!("testing regex");
+        for cap in re.captures_iter(&kernel) {
+            kernel_name = cap[1].to_string();
+            println!("[run] profiling : kernel {}", kernel_name);
+        }
         Ok(())
     }
 }

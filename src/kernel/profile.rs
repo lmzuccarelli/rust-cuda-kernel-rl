@@ -34,7 +34,7 @@ impl ProfileInterface for Profile {
         };
         log::debug!("[run] profile kernel {}", kernel_file);
         let kernel = fs::read_to_string(kernel_file)?;
-        let re = Regex::new("[_]{2}global[_]{2}\\svoid\\s([a-zA-Z0-9_]*)")?;
+        let re = Regex::new("[_]{2}global[_]{2}[_a-zA-Z()\\s]*\\svoid\\s([a-zA-Z0-9_]*)")?;
         let mut kernel_name = String::new();
         for cap in re.captures_iter(&kernel) {
             kernel_name = cap[1].to_string();

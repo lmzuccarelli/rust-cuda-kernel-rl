@@ -9,7 +9,7 @@
   ],
   "working_dir": "/home/lzuccarelli/Projects/rust-cuda-kernel-rl",
   "max_rollout": 10,
-  "rollout_start": 2,
+  "rollout_start": 3,
   "flow_control": 0,
   "gpu_arch": 86
 }
