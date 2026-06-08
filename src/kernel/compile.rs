@@ -111,7 +111,7 @@ impl CompileInterface for Compile {
         write: bool,
     ) -> Result<String, Box<dyn std::error::Error>> {
         let mut kernel = String::new();
-        let dir = format!("{}", work_item.target_dir);
+        let dir = work_item.target_dir.clone();
 
         // create output directory
         fs::create_dir_all(format!("{}/build", work_item.target_dir))?;
@@ -126,7 +126,8 @@ impl CompileInterface for Compile {
                 }
             }
             None => {
-                return Err(Box::from("[cuda_kernel] upload kernel_name is empty"));
+                let file = format!("{}/init.cu", dir);
+                kernel = fs::read_to_string(&file)?;
             }
         }
         Ok(kernel)

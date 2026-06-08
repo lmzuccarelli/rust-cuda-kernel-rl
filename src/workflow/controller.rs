@@ -85,7 +85,7 @@ impl ControllerInterface for Controller {
             let baseline_dir = format!("{}/out/{}/rl-ncu/baseline", parameters.working_dir, item);
             let payload = format!(
                 r##"{{ "name": "{}", "working_dir": "{}", "gpu_arch": "{}" , "target_dir": "{}" }}"##,
-                parameters.name, parameters.working_dir, parameters.gpu_arch, baseline_dir
+                item, parameters.working_dir, parameters.gpu_arch, baseline_dir
             );
             // as we are saving locally to replay buffer , change out to logs
             let local_baseline_dir = baseline_dir.replace("/out/", "/logs/");
@@ -447,7 +447,6 @@ mod tests {
     // this brings everything from parent's scope into this scope
     use super::*;
     use crate::config::load::{ConfigInterface, ImplConfigInterface};
-    use crate::utils::common::extract_code_all;
     use regex::Regex;
     use std::fs;
 
@@ -511,15 +510,6 @@ mod tests {
 
         println!();
 
-        let base_dir = format!("{}/logs/{}/rl-ncu", parameters.working_dir, item);
-        extract_code_all(
-            base_dir.clone(),
-            parameters.working_dir.clone(),
-            format!("{}/v1/upload", parameters.compile_server_url),
-            parameters.gpu_arch,
-        )
-        .await?;
-
         for _x in 0..10 {
             let pick = pick_weighted(plans.clone())?;
             log::info!(
@@ -541,7 +531,7 @@ __global__ __launch_bounds__(THREADS_PER_BLOCK)
 void matmul_wmma_kernel(
 "#;
         let re = Regex::new("[_]{2}global[_]{2}[_a-zA-Z()\\s]*\\svoid\\s([a-zA-Z0-9_]*)")?;
-        let kernel = fs::read_to_string(
+        let mut kernel = fs::read_to_string(
             "/home/lzuccarelli/Projects/rust-cuda-kernel-rl/logs/level1/001_Square_matrix_multiplication/rl-ncu/trajectory_1_mINMOfqW/step_3/tensor_core_utilization.cu",
         )?;
 
@@ -551,6 +541,16 @@ void matmul_wmma_kernel(
             kernel_name = cap[1].to_string();
             println!("[run] profiling : kernel {}", kernel_name);
         }
+
+        kernel = fs::read_to_string(
+            "/home/lzuccarelli/Projects/rust-cuda-kernel-rl/logs/level1/001_Square_matrix_multiplication/rl-ncu/baseline/init.cu",
+        )?;
+        println!("testing regex");
+        for cap in re.captures_iter(&kernel) {
+            kernel_name = cap[1].to_string();
+            println!("[run] profiling : kernel {}", kernel_name);
+        }
+
         Ok(())
     }
 }
