@@ -569,7 +569,9 @@ CURRENT KERNEL ANALYSIS:
 {profile}
 
 ANNOTATED SOURCE CODE (with per-line analysis):
+```cuda
 {code}
+```
 
 {combined}
 CRITICAL REQUIREMENTS:

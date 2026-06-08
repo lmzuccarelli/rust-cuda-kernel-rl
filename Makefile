@@ -1,6 +1,6 @@
 # for static build using x86_64-unknown-linux-gnu ensure glibc-static (rhel based) is installed
 
-.PHONY: all clean-all build build-local verify fmt
+.PHONY: all clean-all build build-static verify fmt test
 
 all: clean-all build
 
@@ -15,6 +15,9 @@ verify:
 
 fmt:
 	rustfmt --check src/*.rs --edition 2024
+
+test:
+	cargo test -- --nocapture --test-threads=1
 
 clean-all:
 	rm -rf cargo-test*

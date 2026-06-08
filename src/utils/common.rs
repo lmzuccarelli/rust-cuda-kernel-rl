@@ -17,6 +17,7 @@ pub fn extract_code(input: String) -> Result<String, Box<dyn std::error::Error>>
     Ok(result.to_string())
 }
 
+#[allow(unused)]
 pub async fn extract_code_all(
     base_dir: String,
     working_dir: String,

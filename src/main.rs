@@ -169,9 +169,7 @@ pub async fn execute(
     // check if we are in workflow controller mode or launch service mode
     if command == "controller" {
         // only call health endpoints if we are not testing
-        if !parameters.test {
-            Controller::get_health(parameters.clone()).await?;
-        }
+        Controller::get_health(parameters.clone()).await?;
         Controller::execute_baseline_flow(parameters.clone()).await?;
         Controller::execute_agent_flow(parameters).await?;
         Ok(())

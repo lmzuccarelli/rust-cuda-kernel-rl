@@ -12,8 +12,8 @@ pub struct Parameters {
     pub working_dir: String,
     pub gpu_arch: u8,
     pub max_rollout: u8,
+    pub rollout_start: u8,
     pub flow_control: u8,
-    pub test: bool,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]

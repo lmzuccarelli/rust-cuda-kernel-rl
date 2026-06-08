@@ -5,7 +5,7 @@ use crate::inference::prompts::{
     get_task_generate_code_prompt,
 };
 use crate::kernel::profile::{Profile, ProfileInterface};
-use crate::utils::common::{extract_code, extract_code_all, find_cuda_file, pick_weighted};
+use crate::utils::common::{extract_code, find_cuda_file, pick_weighted};
 use crate::workflow::api_client::{process_get_call, process_post_call};
 use custom_logger as log;
 use futures::stream::FuturesUnordered;
@@ -81,262 +81,167 @@ impl ControllerInterface for Controller {
                 json_plan
             );
 
-            match parameters.test {
-                false => {
-                    let x = parameters.flow_control;
-                    let baseline_dir =
-                        format!("{}/out/{}/rl-ncu/baseline", parameters.working_dir, item);
-                    let payload = format!(
-                        r##"{{ "name": "{}", "working_dir": "{}", "gpu_arch": "{}" , "target_dir": "{}" }}"##,
-                        parameters.name, parameters.working_dir, parameters.gpu_arch, baseline_dir
+            let x = parameters.flow_control;
+            let baseline_dir = format!("{}/out/{}/rl-ncu/baseline", parameters.working_dir, item);
+            let payload = format!(
+                r##"{{ "name": "{}", "working_dir": "{}", "gpu_arch": "{}" , "target_dir": "{}" }}"##,
+                parameters.name, parameters.working_dir, parameters.gpu_arch, baseline_dir
+            );
+            // as we are saving locally to replay buffer , change out to logs
+            let local_baseline_dir = baseline_dir.replace("/out/", "/logs/");
+
+            if x & 2u8 == 2 {
+                // call the compile endpoint
+                log::info!("[execute_baseline_flow] baseline calling compile cuda kernel endpoint");
+                let url = format!("{}/v1/compile", parameters.compile_server_url);
+                let file_name = format!("{}/compile.txt", local_baseline_dir);
+                process_post_call(Some(file_name), url, payload.clone()).await?;
+
+                // download cuda kernel (init.cu)
+                log::info!("[execute_baseline_flow] baseline downloading cuda kernel");
+                let url = format!("{}/v1/cuda-kernel", parameters.compile_server_url);
+                let file_name = format!("{}/init.cu", local_baseline_dir);
+                code = process_post_call(Some(file_name), url, payload.clone()).await?;
+            } else {
+                code = fs::read_to_string(format!("{}/init.cu", local_baseline_dir))?;
+            }
+
+            if x & 4u8 == 4 {
+                // call the execute endpoint
+                log::info!("[execute_baseline_flow] baseline calling execute cuda kernel endpoint");
+                let url = format!("{}/v1/execute", parameters.gpu_server_url);
+                let file_name = format!("{}/execute.txt", local_baseline_dir);
+                process_post_call(Some(file_name), url, payload.clone()).await?;
+            }
+
+            if x & 8u8 == 8 {
+                // call the nvidia ncu profile endpoint
+                log::info!("[execute_baseline_flow] baseline calling profile cuda kernel endpoint");
+                let url = format!("{}/v1/profile", parameters.gpu_server_url);
+                let file_name = format!("{}/profile.txt", local_baseline_dir);
+                ncu_report = process_post_call(Some(file_name), url, payload).await?;
+            } else {
+                ncu_report = fs::read_to_string(format!("{}/profile.txt", local_baseline_dir))?;
+            }
+
+            elapsed_cycles = Profile::get_elapsed_cycles(ncu_report.clone())?;
+            log::info!(
+                "[execute_baseline_flow] baseline elapsed_cycles {}",
+                elapsed_cycles
+            );
+
+            if x & 16u8 == 16 {
+                log::info!(
+                    "[execute_baseline_flow] baseline calling llm endpoint (current state profile)"
+                );
+                // set the initial prompt for the llm
+                let prompt = get_profile_prompt(code.clone(), ncu_report.clone()).replace("\n", "");
+                // call the llm endpoint
+                let url = format!("{}/v1/prompt", parameters.llm_server_url);
+                let file_name = format!("{}/llm_state_response.txt", local_baseline_dir);
+                state = process_post_call(Some(file_name), url, prompt).await?;
+            } else {
+                state =
+                    fs::read_to_string(format!("{}/llm_state_response.txt", local_baseline_dir))?;
+            }
+
+            if x & 32u8 == 32 {
+                log::info!("[execute_baseline_flow] baseline calling llm endpoint (match state)");
+                // set the initial prompt for the llm
+                let prompt = get_state_match_prompt(state.clone());
+                // call the llm endpoint
+                let url = format!("{}/v1/prompt", parameters.llm_server_url);
+                let file_name = format!("{}/llm_match_state_response.txt", local_baseline_dir);
+                match_state = process_post_call(Some(file_name), url, prompt).await?;
+            } else {
+                match_state = fs::read_to_string(format!(
+                    "{}/llm_match_state_response.txt",
+                    local_baseline_dir
+                ))?;
+            }
+
+            if x & 64u8 == 64 {
+                log::info!(
+                    "[execute_baseline_flow] baseline calling llm endpoint (optimization plan)"
+                );
+
+                // get the top_n matching optimizations in json format from the llm
+                let avail_opt = get_available_optimizations();
+                let prompt_op = get_optimization_plan(
+                    parameters.max_rollout,
+                    state.clone(),
+                    code.clone(),
+                    avail_opt,
+                );
+                // call the llm endpoint
+                let url = format!("{}/v1/prompt", parameters.llm_server_url);
+                let file_name = format!("{}/optimization-plan.json", local_baseline_dir);
+                json_plan = process_post_call(Some(file_name), url, prompt_op).await?;
+            } else {
+                json_plan =
+                    fs::read_to_string(format!("{}/optimization-plan.json", local_baseline_dir))?;
+            }
+
+            if x & 128u8 == 128 {
+                let start = Instant::now();
+                log::info!("[execute_baseline_flow] executing rollout");
+                let json_plan_updated = json_plan.replace("```json", "");
+                let plans = serde_json::from_str::<Vec<OptimizationPlan>>(&json_plan_updated)?;
+                let category = Profile::get_category(state)?;
+                //let mut count = 0;
+                let mut futs = FuturesUnordered::new();
+                for x in 0..parameters.max_rollout {
+                    let plan = pick_weighted(plans.clone())?;
+                    // Generate a shorter 8-character ID (6 bytes)
+                    let short = short_id_with_bytes(6)?;
+                    let trajectory_dir = format!(
+                        "{}/logs/{}/rl-ncu/trajectory_{}_{}",
+                        parameters.working_dir,
+                        item,
+                        x + 1,
+                        short
                     );
-                    // as we are saving locally to replay buffer , change out to logs
-                    let local_baseline_dir = baseline_dir.replace("/out/", "/logs/");
-
-                    if x & 2u8 == 2 {
-                        // call the compile endpoint
-                        log::info!(
-                            "[execute_baseline_flow] baseline calling compile cuda kernel endpoint"
-                        );
-                        let url = format!("{}/v1/compile", parameters.compile_server_url);
-                        let file_name = format!("{}/compile.txt", local_baseline_dir);
-                        process_post_call(Some(file_name), url, payload.clone()).await?;
-
-                        // download cuda kernel (init.cu)
-                        log::info!("[execute_baseline_flow] baseline downloading cuda kernel");
-                        let url = format!("{}/v1/cuda-kernel", parameters.compile_server_url);
-                        let file_name = format!("{}/init.cu", local_baseline_dir);
-                        code = process_post_call(Some(file_name), url, payload.clone()).await?;
-                    } else {
-                        code = fs::read_to_string(format!("{}/init.cu", local_baseline_dir))?;
-                    }
-
-                    if x & 4u8 == 4 {
-                        // call the execute endpoint
-                        log::info!(
-                            "[execute_baseline_flow] baseline calling execute cuda kernel endpoint"
-                        );
-                        let url = format!("{}/v1/execute", parameters.gpu_server_url);
-                        let file_name = format!("{}/execute.txt", local_baseline_dir);
-                        process_post_call(Some(file_name), url, payload.clone()).await?;
-                    }
-
-                    if x & 8u8 == 8 {
-                        // call the nvidia ncu profile endpoint
-                        log::info!(
-                            "[execute_baseline_flow] baseline calling profile cuda kernel endpoint"
-                        );
-                        let url = format!("{}/v1/profile", parameters.gpu_server_url);
-                        let file_name = format!("{}/profile.txt", local_baseline_dir);
-                        ncu_report = process_post_call(Some(file_name), url, payload).await?;
-                    } else {
-                        ncu_report =
-                            fs::read_to_string(format!("{}/profile.txt", local_baseline_dir))?;
-                    }
-
-                    elapsed_cycles = Profile::get_elapsed_cycles(ncu_report.clone())?;
                     log::info!(
-                        "[execute_baseline_flow] baseline elapsed_cycles {}",
-                        elapsed_cycles
+                        "[execute_baseline_flow] executing trajectory {} for technique {}",
+                        trajectory_dir,
+                        plan.technique.to_owned()
+                    );
+                    fs::create_dir_all(format!("{}/step_0", trajectory_dir.to_owned()))?;
+                    let state_category = get_performance_state_category();
+                    let combined = get_combined(state_category)?;
+                    let task_prompt = get_task_generate_code_prompt(
+                        plan.technique.to_owned(),
+                        category.to_owned(),
+                        plan.description.to_owned(),
+                        ncu_report.to_owned(),
+                        code.to_owned(),
+                        combined,
                     );
 
-                    if x & 16u8 == 16 {
-                        log::info!(
-                            "[execute_baseline_flow] baseline calling llm endpoint (current state profile)"
-                        );
-                        // set the initial prompt for the llm
-                        let prompt =
-                            get_profile_prompt(code.clone(), ncu_report.clone()).replace("\n", "");
-                        // call the llm endpoint
-                        let url = format!("{}/v1/prompt", parameters.llm_server_url);
-                        let file_name = format!("{}/llm_state_response.txt", local_baseline_dir);
-                        state = process_post_call(Some(file_name), url, prompt).await?;
-                    } else {
-                        state = fs::read_to_string(format!(
-                            "{}/llm_state_response.txt",
-                            local_baseline_dir
-                        ))?;
-                    }
+                    fs::write(
+                        format!("{}/step_0/{}.prompt", trajectory_dir, plan.technique),
+                        task_prompt.clone(),
+                    )?;
 
-                    if x & 32u8 == 32 {
-                        log::info!(
-                            "[execute_baseline_flow] baseline calling llm endpoint (match state)"
-                        );
-                        // set the initial prompt for the llm
-                        let prompt = get_state_match_prompt(state.clone());
-                        // call the llm endpoint
-                        let url = format!("{}/v1/prompt", parameters.llm_server_url);
-                        let file_name =
-                            format!("{}/llm_match_state_response.txt", local_baseline_dir);
-                        match_state = process_post_call(Some(file_name), url, prompt).await?;
-                    } else {
-                        match_state = fs::read_to_string(format!(
-                            "{}/llm_match_state_response.txt",
-                            local_baseline_dir
-                        ))?;
-                    }
-
-                    if x & 64u8 == 64 {
-                        log::info!(
-                            "[execute_baseline_flow] baseline calling llm endpoint (optimization plan)"
-                        );
-
-                        // get the top_n matching optimizations in json format from the llm
-                        let avail_opt = get_available_optimizations();
-                        let prompt_op = get_optimization_plan(
-                            parameters.max_rollout,
-                            state.clone(),
-                            code.clone(),
-                            avail_opt,
-                        );
-                        // call the llm endpoint
-                        let url = format!("{}/v1/prompt", parameters.llm_server_url);
-                        let file_name = format!("{}/optimization-plan.json", local_baseline_dir);
-                        json_plan = process_post_call(Some(file_name), url, prompt_op).await?;
-                    } else {
-                        json_plan = fs::read_to_string(format!(
-                            "{}/optimization-plan.json",
-                            local_baseline_dir
-                        ))?;
-                    }
-
-                    if x & 128u8 == 128 {
-                        let start = Instant::now();
-                        log::info!("[execute_baseline_flow] executing rollout");
-                        let json_plan_updated = json_plan.replace("```json", "");
-                        let plans =
-                            serde_json::from_str::<Vec<OptimizationPlan>>(&json_plan_updated)?;
-                        let category = Profile::get_category(state)?;
-                        //let mut count = 0;
-                        let mut futs = FuturesUnordered::new();
-                        for x in 0..parameters.max_rollout {
-                            let plan = pick_weighted(plans.clone())?;
-                            // Generate a shorter 8-character ID (6 bytes)
-                            let short = short_id_with_bytes(6)?;
-                            let trajectory_dir = format!(
-                                "{}/logs/{}/rl-ncu/trajectory_{}_{}",
-                                parameters.working_dir,
-                                item,
-                                x + 1,
-                                short
-                            );
-                            log::info!(
-                                "[execute_baseline_flow] executing trajectory {} for technique {}",
-                                trajectory_dir,
-                                plan.technique.to_owned()
-                            );
-                            fs::create_dir_all(format!("{}/step_0", trajectory_dir.to_owned()))?;
-                            let state_category = get_performance_state_category();
-                            let combined = get_combined(state_category)?;
-                            let task_prompt = get_task_generate_code_prompt(
-                                plan.technique.to_owned(),
-                                category.to_owned(),
-                                plan.description.to_owned(),
-                                ncu_report.to_owned(),
-                                code.to_owned(),
-                                combined,
-                            );
-
-                            fs::write(
-                                format!("{}/step_0/{}.prompt", trajectory_dir, plan.technique),
-                                task_prompt.clone(),
-                            )?;
-
-                            let url = format!("{}/v1/prompt", parameters.llm_server_url);
-                            // this will always start with step 0, then within the complex flow
-                            // each new step (until max.rollout) will be added
-                            let file_name = format!(
-                                "{}/step_0/{}_llm_response.txt",
-                                trajectory_dir, plan.technique
-                            );
-                            futs.push(process_post_call(Some(file_name), url, task_prompt));
-                        }
-                        // Wait for the remaining to finish.
-                        while let Some(response) = futs.next().await {
-                            match response {
-                                Ok(_) => log::info!("[execute_baseline_flow] call succeeded"),
-                                Err(e) => log::error!("[execute_baseline_flow] call failed {}", e),
-                            }
-                        }
-
-                        let elapsed = start.elapsed();
-                        log::info!("[execute_baseline_flow] completed rollout in {:?}", elapsed);
+                    let url = format!("{}/v1/prompt", parameters.llm_server_url);
+                    // this will always start with step 0, then within the complex flow
+                    // each new step (until max.rollout) will be added
+                    let file_name = format!(
+                        "{}/step_0/{}_llm_response.txt",
+                        trajectory_dir, plan.technique
+                    );
+                    futs.push(process_post_call(Some(file_name), url, task_prompt));
+                }
+                // Wait for the remaining to finish.
+                while let Some(response) = futs.next().await {
+                    match response {
+                        Ok(_) => log::info!("[execute_baseline_flow] call succeeded"),
+                        Err(e) => log::error!("[execute_baseline_flow] call failed {}", e),
                     }
                 }
-                true => {
-                    log::warn!("[execute_baseline_flow] testing current flow control");
-                    let ncu_report =
-                        fs::read_to_string(format!("logs/{}/rl-ncu/baseline/profile.txt", item))?;
-                    elapsed_cycles = Profile::get_elapsed_cycles(ncu_report.clone())?;
-                    log::info!(
-                        "[execute_baseline_flow] testing elapsed_cycles {}",
-                        elapsed_cycles
-                    );
-                    let (result, reward) = Profile::calculate_improvement(elapsed_cycles, 7677773)?;
-                    log::info!(
-                        "[execute_baseline_flow] testing result {} : reward {}",
-                        result,
-                        reward
-                    );
-                    let json_plan = fs::read_to_string(format!(
-                        "logs/{}/rl-ncu/baseline/optimization-plan.json",
-                        item
-                    ))?;
-                    let state = fs::read_to_string(format!(
-                        "logs/{}/rl-ncu/baseline/llm_state_response.txt",
-                        item
-                    ))?;
 
-                    let category = Profile::get_category(state)?;
-                    log::info!("[execute_baseline_flow] testing category {}", category);
-
-                    println!();
-
-                    let json_plan_updated = json_plan.replace("```json", "");
-                    let plans = serde_json::from_str::<Vec<OptimizationPlan>>(&json_plan_updated)?;
-                    for op in plans.iter() {
-                        log::info!(
-                            "[execute_baseline_flow] testing technique   : {}",
-                            op.technique
-                        );
-                        log::info!(
-                            "[execute_baseline_flow] testing relevance   : {}",
-                            op.relevance_score
-                        );
-                        log::info!(
-                            "[execute_baseline_flow] testing description : {}",
-                            op.description
-                        );
-                        println!();
-                    }
-
-                    println!();
-
-                    let base_dir = format!("{}/logs/{}/rl-ncu", parameters.working_dir, item);
-                    extract_code_all(
-                        base_dir.clone(),
-                        parameters.working_dir.clone(),
-                        format!("{}/v1/upload", parameters.compile_server_url),
-                        parameters.gpu_arch,
-                    )
-                    .await?;
-
-                    for _x in 0..10 {
-                        let pick = pick_weighted(plans.clone())?;
-                        log::info!(
-                            "[execute_baseline_flow] weighted plan {} {}",
-                            pick.technique,
-                            pick.relevance_score
-                        );
-                    }
-
-                    let base_dir = format!(
-                        "{}/logs/{}/rl-ncu/trajectory_1_mINMOfqW/step_0",
-                        parameters.working_dir, item
-                    );
-                    let cuda_file = find_cuda_file(base_dir)?;
-                    println!("baba {}", cuda_file);
-                }
+                let elapsed = start.elapsed();
+                log::info!("[execute_baseline_flow] completed rollout in {:?}", elapsed);
             }
         }
         log::info!("[execute_baseline_flow] workflow controller completed successfully");
@@ -355,7 +260,7 @@ impl ControllerInterface for Controller {
             let baseline_elapsed_cycles = Profile::get_elapsed_cycles(baseline_ncu_report.clone())?;
             let current_trajectory = "trajectory_1_mINMOfqW";
 
-            for step in 0..parameters.max_rollout {
+            for step in parameters.rollout_start..parameters.max_rollout - 1 {
                 // plan_count starts at 9 and then decrements by one until we reach 4
                 let mut plan_count = parameters.max_rollout - (step + 1);
                 if plan_count <= 4 {
@@ -408,7 +313,7 @@ impl ControllerInterface for Controller {
                                 );
                                 let url = format!("{}/v1/profile", parameters.gpu_server_url);
                                 let file_name = format!("{}/profile.txt", local_target_dir);
-                                // update ncu_report (override previos)
+                                // update ncu_report (override previous)
                                 ncu_report =
                                     process_post_call(Some(file_name), url, payload.clone())
                                         .await?;
@@ -461,6 +366,7 @@ impl ControllerInterface for Controller {
 
                 // get new state prompt based on the ncu_report
                 // if previous steps fail it will use the baseline ncu_report
+                log::info!("[execute_agent_flow] calling llm (state)");
                 let state_prompt =
                     get_profile_prompt(code.clone(), ncu_report.clone()).replace("\n", "");
                 // call the llm endpoint
@@ -474,10 +380,11 @@ impl ControllerInterface for Controller {
                     get_optimization_plan(plan_count, state.clone(), code.clone(), avail_opt);
 
                 // call llm for optimization plan
+                log::info!("[execute_agent_flow] calling llm (optimization plan)");
                 let url = format!("{}/v1/prompt", parameters.llm_server_url);
                 let file_name = format!("{}/optimization-plan.json", local_target_dir);
                 let json_plan = process_post_call(Some(file_name), url, prompt_op).await?;
-                let json_plan_updated = json_plan.replace("```json", "");
+                let json_plan_updated = json_plan.replace("```json", "").replace("```", "");
                 let plans = serde_json::from_str::<Vec<OptimizationPlan>>(&json_plan_updated)?;
                 let category = Profile::get_category(state.clone())?;
                 // pick the weighted plan
@@ -508,6 +415,7 @@ impl ControllerInterface for Controller {
                     task_prompt.clone(),
                 )?;
 
+                log::info!("[execute_agent_flow] calling llm (task generate code)");
                 let url = format!("{}/v1/prompt", parameters.llm_server_url);
                 let file_name = format!("{}/{}_llm_response.txt", local_target_dir, plan.technique);
                 let contents = process_post_call(Some(file_name), url, task_prompt).await?;
@@ -517,7 +425,102 @@ impl ControllerInterface for Controller {
                 fs::write(format!("{}/{}.cu", local_target_dir, plan.technique), code)?;
             }
         }
+        Ok(())
+    }
+}
 
+#[cfg(test)]
+mod tests {
+    // this brings everything from parent's scope into this scope
+    use super::*;
+    use crate::config::load::{ConfigInterface, ImplConfigInterface};
+    use crate::utils::common::extract_code_all;
+    use std::fs;
+
+    #[tokio::test]
+    async fn test_all() -> Result<(), Box<dyn std::error::Error>> {
+        let impl_config = ImplConfigInterface {};
+        let res_params = impl_config.read("config/application-config.json".to_owned());
+        let parameters = match res_params {
+            Ok(params) => params,
+            Err(e) => {
+                eprintln!("[main] config file error: {}", e);
+                std::process::exit(1);
+            }
+        };
+
+        let item = "level1/001_Square_matrix_multiplication";
+        log::warn!("[execute_baseline_flow] testing current flow control");
+        let ncu_report = fs::read_to_string(format!("logs/{}/rl-ncu/baseline/profile.txt", item))?;
+        let elapsed_cycles = Profile::get_elapsed_cycles(ncu_report.clone())?;
+        log::info!(
+            "[execute_baseline_flow] testing elapsed_cycles {}",
+            elapsed_cycles
+        );
+        let (result, reward) = Profile::calculate_improvement(elapsed_cycles, 7677773)?;
+        log::info!(
+            "[execute_baseline_flow] testing result {} : reward {}",
+            result,
+            reward
+        );
+        let json_plan = fs::read_to_string(format!(
+            "logs/{}/rl-ncu/trajectory_1_mINMOfqW/step_0/optimization-plan.json",
+            item
+        ))?;
+        let state = fs::read_to_string(format!(
+            "logs/{}/rl-ncu/baseline/llm_state_response.txt",
+            item
+        ))?;
+
+        let category = Profile::get_category(state)?;
+        log::info!("[execute_baseline_flow] testing category {}", category);
+
+        println!();
+
+        let json_plan_updated = json_plan.replace("```json", "").replace("```", "");
+        let plans = serde_json::from_str::<Vec<OptimizationPlan>>(&json_plan_updated)?;
+        for op in plans.iter() {
+            log::info!(
+                "[execute_baseline_flow] testing technique   : {}",
+                op.technique
+            );
+            log::info!(
+                "[execute_baseline_flow] testing relevance   : {}",
+                op.relevance_score
+            );
+            log::info!(
+                "[execute_baseline_flow] testing description : {}",
+                op.description
+            );
+            println!();
+        }
+
+        println!();
+
+        let base_dir = format!("{}/logs/{}/rl-ncu", parameters.working_dir, item);
+        extract_code_all(
+            base_dir.clone(),
+            parameters.working_dir.clone(),
+            format!("{}/v1/upload", parameters.compile_server_url),
+            parameters.gpu_arch,
+        )
+        .await?;
+
+        for _x in 0..10 {
+            let pick = pick_weighted(plans.clone())?;
+            log::info!(
+                "[execute_baseline_flow] testing weighted plan {} {}",
+                pick.technique,
+                pick.relevance_score
+            );
+        }
+
+        let base_dir = format!(
+            "{}/logs/{}/rl-ncu/trajectory_1_mINMOfqW/step_0",
+            parameters.working_dir, item
+        );
+        let cuda_file = find_cuda_file(base_dir)?;
+        log::info!("[execute_baseline_flow] testing cuda file {}", cuda_file);
         Ok(())
     }
 }
