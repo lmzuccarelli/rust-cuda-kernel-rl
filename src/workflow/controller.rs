@@ -260,7 +260,7 @@ impl ControllerInterface for Controller {
             let baseline_elapsed_cycles = Profile::get_elapsed_cycles(baseline_ncu_report.clone())?;
             let current_trajectory = "trajectory_1_mINMOfqW";
 
-            for step in parameters.rollout_start..parameters.max_rollout - 1 {
+            for step in parameters.rollout_start..parameters.max_rollout {
                 // plan_count starts at 9 and then decrements by one until we reach 4
                 let mut plan_count = parameters.max_rollout - (step + 1);
                 if plan_count <= 4 {
@@ -404,6 +404,14 @@ impl ControllerInterface for Controller {
                     code.to_owned(),
                     combined,
                 );
+
+                if step == parameters.max_rollout - 1 {
+                    // no use working on the max_rollout
+                    log::info!(
+                        "[execute_agent_flow] max_rollout reached : exiting flow gracefully"
+                    );
+                    break;
+                }
 
                 // setup for the next step
                 let local_target_dir = format!(
