@@ -1,6 +1,6 @@
 [package]
 name = "rust-cuda-kernel-rl"
-version = "0.3.6"
+version = "0.3.7"
 edition = "2024"
 authors = ["Luigi Mario Zuccarelli<>luigizuccarelli@gmail.com"]
 

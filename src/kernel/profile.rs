@@ -28,9 +28,7 @@ impl ProfileInterface for Profile {
         // get the kernel name
         let kernel_file = match work_item.kernel_name {
             Some(name) => format!("{}/{}", work_item.target_dir, name),
-            None => {
-                return Err(Box::from("[run] profile kernel name is empty"));
-            }
+            None => format!("kernelbench-cuda/{}/init.cu", work_item.name),
         };
         log::debug!("[run] profile kernel {}", kernel_file);
         let kernel = fs::read_to_string(kernel_file)?;
