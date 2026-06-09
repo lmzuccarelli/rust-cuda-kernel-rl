@@ -4,6 +4,7 @@ use custom_logger as log;
 use rand::distr::weighted::WeightedIndex;
 use rand::prelude::*;
 use std::fs;
+use std::path::Path;
 use walkdir::WalkDir;
 
 // common helper functions
@@ -35,17 +36,20 @@ pub async fn extract_code_all(
                             Ok(contents) => {
                                 let code = extract_code(contents)?;
                                 if !code.is_empty() {
-                                    let vec_parts = file.split("step_").collect::<Vec<&str>>();
-                                    let target_dir = vec_parts[0].replace("logs", "out");
-                                    let file_name = format!(
-                                        "step_{}",
-                                        vec_parts[1].replace("_llm_response.txt", ".cu")
-                                    );
-                                    log::info!("target_dir : {}", target_dir);
+                                    let file_name = obj
+                                        .file_name()
+                                        .to_string_lossy()
+                                        .replace("logs", "out")
+                                        .replace("_llm_response.txt", ".cu");
                                     log::info!("file_name  : {}", file_name);
+                                    let target_dir = obj
+                                        .path()
+                                        .parent()
+                                        .unwrap_or(Path::new(""))
+                                        .to_string_lossy();
                                     // write to local disk
                                     let res = fs::write(
-                                        format!("{}/{}", vec_parts[0], file_name),
+                                        format!("{}/{}", target_dir, file_name),
                                         code.clone(),
                                     );
                                     match res {

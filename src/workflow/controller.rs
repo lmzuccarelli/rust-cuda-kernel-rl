@@ -5,7 +5,7 @@ use crate::inference::prompts::{
     get_task_generate_code_prompt,
 };
 use crate::kernel::profile::{Profile, ProfileInterface};
-use crate::utils::common::{extract_code, find_cuda_file, pick_weighted};
+use crate::utils::common::{extract_code, extract_code_all, find_cuda_file, pick_weighted};
 use crate::workflow::api_client::{process_get_call, process_post_call};
 use custom_logger as log;
 use futures::stream::FuturesUnordered;
@@ -82,7 +82,11 @@ impl ControllerInterface for Controller {
             );
 
             let x = parameters.flow_control;
-            let baseline_dir = format!("{}/out/{}/rl-ncu/baseline", parameters.working_dir, item);
+            let baseline_dir = format!(
+                "{}/out/{}/rl-ncu/baseline",
+                parameters.working_dir.to_owned(),
+                item
+            );
             let payload = format!(
                 r##"{{ "name": "{}", "working_dir": "{}", "gpu_arch": "{}" , "target_dir": "{}" }}"##,
                 item, parameters.working_dir, parameters.gpu_arch, baseline_dir
@@ -239,6 +243,16 @@ impl ControllerInterface for Controller {
                         Err(e) => log::error!("[execute_baseline_flow] call failed {}", e),
                     }
                 }
+
+                let dir = format!("{}/out/{}/rl-ncu", parameters.working_dir, item);
+                let url = format!("{}/v1/upload", parameters.compile_server_url);
+                extract_code_all(
+                    dir,
+                    parameters.working_dir.to_owned(),
+                    url,
+                    parameters.gpu_arch,
+                )
+                .await?;
 
                 let elapsed = start.elapsed();
                 log::info!("[execute_baseline_flow] completed rollout in {:?}", elapsed);
