@@ -126,7 +126,7 @@ impl CompileInterface for Compile {
                 }
             }
             None => {
-                let file = format!("{}/init.cu", dir);
+                let file = format!("kernelbench-cuda/{}/init.cu", work_item.name);
                 kernel = fs::read_to_string(&file)?;
             }
         }
