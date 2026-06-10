@@ -23,28 +23,27 @@ pub async fn process_post_call(
 
     let status = client_response.status();
     let response = client_response.bytes().await?;
+    let doc_content = String::from_utf8(response.to_vec())?;
 
-    let res = match status {
+    // write to file is file_name is set
+    // regardless of pass/fail
+    match file_name {
+        Some(name) => {
+            fs::write(name, doc_content.clone())?;
+        }
+        None => {
+            log::debug!("[process_post_call] file_name not supplied (not saving to disk)");
+        }
+    }
+    match status {
         StatusCode::OK => {
-            // only if we have success can we then save the document
-            // to local storage if file_name is supplied (option)
-            let doc_content = String::from_utf8(response.to_vec())?;
-            match file_name {
-                Some(name) => {
-                    fs::write(name, doc_content.clone())?;
-                }
-                None => {
-                    log::debug!("[process_post_call] file_name not supplied (not saving to disk)");
-                }
-            }
-            doc_content
+            log::info!("[process_post_call] successful");
         }
         _ => {
-            return Err(Box::from(format!("post request failed {}", status)));
+            return Err(Box::from(format!("[process_post_call] failed {}", status)));
         }
     };
-    log::trace!("[process_post_call] response {:?}", res);
-    Ok(res)
+    Ok(doc_content)
 }
 
 pub async fn process_get_call(url: String) -> Result<String, Box<dyn std::error::Error>> {

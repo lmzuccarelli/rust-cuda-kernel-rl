@@ -285,8 +285,9 @@ impl ControllerInterface for Controller {
             let baseline_ncu_report = fs::read_to_string(format!("{}/profile.txt", baseline_dir))?;
             let mut ncu_report = baseline_ncu_report.clone();
             let baseline_elapsed_cycles = Profile::get_elapsed_cycles(baseline_ncu_report.clone())?;
-            //let trajectories =
-            //    get_trajectories(format!("{}/logs/{}/rl-ncu", parameters.working_dir, item))?;
+            let trajectories =
+                get_trajectories(format!("{}/logs/{}/rl-ncu", parameters.working_dir, item))?;
+            log::debug!("[execute_agent_flow] trajectories {:#?}", trajectories);
             let current_trajectory = "trajectory_2_At9y7c1l";
 
             for step in parameters.rollout_start..parameters.max_rollout {

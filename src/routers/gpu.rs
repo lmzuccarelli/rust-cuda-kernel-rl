@@ -23,17 +23,22 @@ pub async fn endpoints(req: Request<Incoming>) -> Result<Response<Full<Bytes>>, 
                                 *response.body_mut() = Full::from(content);
                             }
                             Err(err) => {
-                                log::error!("[endpoints] {}", err);
+                                log::error!("[endpoints] executing cuda kernel {}", err);
                                 *response.status_mut() = StatusCode::INTERNAL_SERVER_ERROR;
-                                *response.body_mut() =
-                                    Full::from(format!("[endpoints] error : {}\n", err));
+                                *response.body_mut() = Full::from(format!(
+                                    "[endpoints] executing cuda kernel error {}\n",
+                                    err
+                                ));
                             }
                         }
                     }
                     Err(err) => {
-                        log::error!("[endpoints] {}", err);
+                        log::error!("[endpoints] executing cuda kernel parsing body {}", err);
                         *response.status_mut() = StatusCode::INTERNAL_SERVER_ERROR;
-                        *response.body_mut() = Full::from(format!("[endpoints] error : {}\n", err));
+                        *response.body_mut() = Full::from(format!(
+                            "[endpoints] executing cuda kernel parsing body error {}\n",
+                            err
+                        ));
                     }
                 }
             }
@@ -48,17 +53,22 @@ pub async fn endpoints(req: Request<Incoming>) -> Result<Response<Full<Bytes>>, 
                                 *response.body_mut() = Full::from(content);
                             }
                             Err(err) => {
-                                log::error!("[endpoints] {}", err);
+                                log::error!("[endpoints] profiling cuda kernel {}", err);
                                 *response.status_mut() = StatusCode::INTERNAL_SERVER_ERROR;
-                                *response.body_mut() =
-                                    Full::from(format!("[endpoints] error : {}\n", err));
+                                *response.body_mut() = Full::from(format!(
+                                    "[endpoints] profiling cuda kernel error {}\n",
+                                    err
+                                ));
                             }
                         }
                     }
                     Err(err) => {
-                        log::error!("[endpoints] {}", err);
+                        log::error!("[endpoints] profiling cuda kernel parsing body {}", err);
                         *response.status_mut() = StatusCode::INTERNAL_SERVER_ERROR;
-                        *response.body_mut() = Full::from(format!("[endpoints] error : {}\n", err));
+                        *response.body_mut() = Full::from(format!(
+                            "[endpoints] profiling cuda kernel parsing body error {}\n",
+                            err
+                        ));
                     }
                 }
             }

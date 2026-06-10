@@ -23,18 +23,25 @@ pub async fn endpoints(req: Request<Incoming>) -> Result<Response<Full<Bytes>>, 
                                 *response.body_mut() = Full::from(content);
                             }
                             Err(err) => {
-                                log::error!("[endpoints] compile {}", err);
+                                log::error!("[endpoints] compiling cuda kernel error {}", err);
                                 *response.status_mut() = StatusCode::INTERNAL_SERVER_ERROR;
-                                *response.body_mut() =
-                                    Full::from(format!("[endpoints] compile error : {}\n", err));
+                                *response.body_mut() = Full::from(format!(
+                                    "[endpoints] compiling cuda kernel error {}\n",
+                                    err
+                                ));
                             }
                         }
                     }
                     Err(err) => {
-                        log::error!("[endpoints] compile {}", err);
+                        log::error!(
+                            "[endpoints] compiling cuda kernel parsing body error {}",
+                            err
+                        );
                         *response.status_mut() = StatusCode::INTERNAL_SERVER_ERROR;
-                        *response.body_mut() =
-                            Full::from(format!("[endpoints] compile error : {}\n", err));
+                        *response.body_mut() = Full::from(format!(
+                            "[endpoints] compiling cuda kernel parsing body error {}\n",
+                            err
+                        ));
                     }
                 }
             }
@@ -49,20 +56,25 @@ pub async fn endpoints(req: Request<Incoming>) -> Result<Response<Full<Bytes>>, 
                                 *response.body_mut() = Full::from(content);
                             }
                             Err(err) => {
-                                log::error!("[endpoints] cuda-kernel {}", err);
+                                log::error!("[endpoints] read/write cuda kernel error {}", err);
                                 *response.status_mut() = StatusCode::INTERNAL_SERVER_ERROR;
                                 *response.body_mut() = Full::from(format!(
-                                    "[endpoints] cuda-kernel error : {}\n",
+                                    "[endpoints] read/write cuda kernel error {}\n",
                                     err
                                 ));
                             }
                         }
                     }
                     Err(err) => {
-                        log::error!("[endpoints] cuda-kernel {}", err);
+                        log::error!(
+                            "[endpoints] read/write cuda kernel parsing body error {}",
+                            err
+                        );
                         *response.status_mut() = StatusCode::INTERNAL_SERVER_ERROR;
-                        *response.body_mut() =
-                            Full::from(format!("[endpoints] cuda-kernel error : {}\n", err));
+                        *response.body_mut() = Full::from(format!(
+                            "[endpoints] read/write cuda kernel parsing body error {}\n",
+                            err
+                        ));
                     }
                 }
             }
@@ -78,18 +90,29 @@ pub async fn endpoints(req: Request<Incoming>) -> Result<Response<Full<Bytes>>, 
                                 *response.body_mut() = Full::from("ok");
                             }
                             Err(err) => {
-                                log::error!("[endpoints] upload {} : {:?}", err, work_item);
+                                log::error!(
+                                    "[endpoints] uploading cuda kernel {} : {:?}",
+                                    err,
+                                    work_item
+                                );
                                 *response.status_mut() = StatusCode::INTERNAL_SERVER_ERROR;
-                                *response.body_mut() =
-                                    Full::from(format!("[endpoints] upload error : {}\n", err));
+                                *response.body_mut() = Full::from(format!(
+                                    "[endpoints] uploading cuda kernel error {}\n",
+                                    err
+                                ));
                             }
                         }
                     }
                     Err(err) => {
-                        log::error!("[endpoints] {}", err);
+                        log::error!(
+                            "[endpoints] uploading cuda kernel parsing body error {}",
+                            err
+                        );
                         *response.status_mut() = StatusCode::INTERNAL_SERVER_ERROR;
-                        *response.body_mut() =
-                            Full::from(format!("[endpoints] upload error : {}\n", err));
+                        *response.body_mut() = Full::from(format!(
+                            "[endpoints] uploading cuda kernel parsing body error {}\n",
+                            err
+                        ));
                     }
                 }
             }
