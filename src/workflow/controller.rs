@@ -5,7 +5,10 @@ use crate::inference::prompts::{
     get_task_generate_code_prompt,
 };
 use crate::kernel::profile::{Profile, ProfileInterface};
-use crate::utils::common::{extract_code, extract_code_all, find_cuda_file, pick_weighted};
+use crate::utils::common::{
+    extract_code, extract_code_all, extract_code_from_call, find_cuda_file, get_trajectories,
+    pick_weighted,
+};
 use crate::workflow::api_client::{process_get_call, process_post_call};
 use custom_logger as log;
 use futures::stream::FuturesUnordered;
@@ -230,16 +233,26 @@ impl ControllerInterface for Controller {
                     let url = format!("{}/v1/prompt", parameters.llm_server_url);
                     // this will always start with step 0, then within the complex flow
                     // each new step (until max.rollout) will be added
-                    let file_name = format!(
+                    let prompt_file_name = format!(
                         "{}/step_0/{}_llm_response.txt",
                         trajectory_dir, plan.technique
                     );
-                    futs.push(process_post_call(Some(file_name), url, task_prompt));
+                    let kernel_file_name =
+                        format!("{}step_0/{}.cu", trajectory_dir, plan.technique);
+                    // execute in parallel
+                    futs.push(extract_code_from_call(
+                        Some(prompt_file_name),
+                        kernel_file_name,
+                        url,
+                        task_prompt,
+                    ));
                 }
                 // Wait for the remaining to finish.
                 while let Some(response) = futs.next().await {
                     match response {
-                        Ok(_) => log::info!("[execute_baseline_flow] call succeeded"),
+                        Ok(_) => log::info!(
+                            "[execute_baseline_flow] call (extract_code_from_call) succeeded"
+                        ),
                         Err(e) => log::error!("[execute_baseline_flow] call failed {}", e),
                     }
                 }
@@ -263,7 +276,7 @@ impl ControllerInterface for Controller {
     }
 
     async fn execute_agent_flow(parameters: Parameters) -> Result<(), Box<dyn std::error::Error>> {
-        // TODO: loop through all trajectories
+        // TODO: work out batch processing for all level1 -> level3 kernels
         for item in parameters.workflow_batch.iter() {
             // get baseline state and elapsed_cycles
             // optimization plans were calculated in the baseline run
@@ -272,7 +285,9 @@ impl ControllerInterface for Controller {
             let baseline_ncu_report = fs::read_to_string(format!("{}/profile.txt", baseline_dir))?;
             let mut ncu_report = baseline_ncu_report.clone();
             let baseline_elapsed_cycles = Profile::get_elapsed_cycles(baseline_ncu_report.clone())?;
-            let current_trajectory = "trajectory_1_mINMOfqW";
+            //let trajectories =
+            //    get_trajectories(format!("{}/logs/{}/rl-ncu", parameters.working_dir, item))?;
+            let current_trajectory = "trajectory_2_At9y7c1l";
 
             for step in parameters.rollout_start..parameters.max_rollout {
                 // plan_count starts at 9 and then decrements by one until we reach 4
@@ -424,7 +439,7 @@ impl ControllerInterface for Controller {
                     log::info!(
                         "[execute_agent_flow] max_rollout reached : exiting flow gracefully"
                     );
-                    break;
+                    continue;
                 }
 
                 // setup for the next step
@@ -460,7 +475,10 @@ impl ControllerInterface for Controller {
 mod tests {
     // this brings everything from parent's scope into this scope
     use super::*;
-    use crate::config::load::{ConfigInterface, ImplConfigInterface};
+    use crate::{
+        config::load::{ConfigInterface, ImplConfigInterface},
+        utils::common::get_trajectories,
+    };
     use regex::Regex;
     use std::fs;
 
@@ -540,30 +558,26 @@ mod tests {
         let cuda_file = find_cuda_file(base_dir)?;
         log::info!("[execute_baseline_flow] testing cuda file {}", cuda_file);
 
-        let _kernel_test = r#"
-__global__ __launch_bounds__(THREADS_PER_BLOCK)
-void matmul_wmma_kernel(
-"#;
         let re = Regex::new("[_]{2}global[_]{2}[_a-zA-Z()\\s]*\\svoid\\s([a-zA-Z0-9_]*)")?;
-        let mut kernel = fs::read_to_string(
-            "/home/lzuccarelli/Projects/rust-cuda-kernel-rl/logs/level1/001_Square_matrix_multiplication/rl-ncu/trajectory_1_mINMOfqW/step_3/tensor_core_utilization.cu",
-        )?;
+        let mut kernel = fs::read_to_string("tests/init.cu")?;
 
-        let mut kernel_name;
-        println!("testing regex");
+        let mut kernel_name = String::new();
         for cap in re.captures_iter(&kernel) {
             kernel_name = cap[1].to_string();
             println!("[run] profiling : kernel {}", kernel_name);
         }
+        assert_eq!("mmaAsyncStage4Kernel", kernel_name);
 
-        kernel = fs::read_to_string(
-            "/home/lzuccarelli/Projects/rust-cuda-kernel-rl/logs/level1/001_Square_matrix_multiplication/rl-ncu/baseline/init.cu",
-        )?;
-        println!("testing regex");
+        kernel = fs::read_to_string("tests/tensor_core_utilization.cu")?;
         for cap in re.captures_iter(&kernel) {
             kernel_name = cap[1].to_string();
             println!("[run] profiling : kernel {}", kernel_name);
         }
+        assert_eq!("matmul_wmma_kernel", kernel_name);
+
+        let vec_trajectories =
+            get_trajectories(format!("{}/logs/{}/rl-ncu", parameters.working_dir, item))?;
+        println!("{:?}", vec_trajectories);
 
         Ok(())
     }

@@ -3,6 +3,7 @@ use crate::workflow::controller::OptimizationPlan;
 use custom_logger as log;
 use rand::distr::weighted::WeightedIndex;
 use rand::prelude::*;
+use regex::Regex;
 use std::fs;
 use std::path::Path;
 use walkdir::WalkDir;
@@ -151,4 +152,38 @@ pub fn find_cuda_file(dir: String) -> Result<String, Box<dyn std::error::Error>>
         }
     }
     Ok(cuda_file)
+}
+
+pub async fn extract_code_from_call(
+    prompt_file_name: Option<String>,
+    kernel_file_name: String,
+    url: String,
+    data: String,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let contents = process_post_call(prompt_file_name, url, data).await?;
+    let code = extract_code(contents)?;
+    fs::write(kernel_file_name, code)?;
+    Ok(())
+}
+
+#[allow(unused)]
+pub fn get_trajectories(base_dir: String) -> Result<Vec<String>, Box<dyn std::error::Error>> {
+    let mut vec_trajectories = vec![];
+    let re = Regex::new("(trajectory_[0-9]+_[0-9a-zA-Z_-]*)$")?;
+    for e in WalkDir::new(base_dir) {
+        match e {
+            Ok(obj) => {
+                if obj.path().is_dir() {
+                    let file = obj.path().to_string_lossy();
+                    for cap in re.captures_iter(&file) {
+                        vec_trajectories.push(cap[1].to_string());
+                    }
+                }
+            }
+            Err(e) => {
+                log::error!("[get_trajectories] error : {}", e);
+            }
+        }
+    }
+    Ok(vec_trajectories)
 }

@@ -27,11 +27,15 @@ pub async fn process_post_call(
     let res = match status {
         StatusCode::OK => {
             // only if we have success can we then save the document
-            // to local storage
+            // to local storage if file_name is supplied (option)
             let doc_content = String::from_utf8(response.to_vec())?;
-            if file_name.is_some() {
-                // safe to unwrap
-                fs::write(file_name.unwrap(), doc_content.clone())?;
+            match file_name {
+                Some(name) => {
+                    fs::write(name, doc_content.clone())?;
+                }
+                None => {
+                    log::debug!("[process_post_call] file_name not supplied (not saving to disk)");
+                }
             }
             doc_content
         }
