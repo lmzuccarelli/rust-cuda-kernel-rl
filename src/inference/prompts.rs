@@ -581,6 +581,7 @@ CRITICAL REQUIREMENTS:
    - #include statements (cuda_fp16.h, cuda_runtime.h, etc.)
    - #define constants - DEFINE ALL CONSTANTS BEFORE USING THEM
    - Complete __global__ kernel function with proper signature
+   - Ensure the keyword 'void' always precedes the kernel name
    - Complete launch_gpu_implementation function
    - Generate full completed cuda code (no code snippets)
 4. Format ALL code in a single ```cpp code block.

@@ -558,7 +558,7 @@ mod tests {
         let cuda_file = find_cuda_file(base_dir)?;
         log::info!("[execute_baseline_flow] testing cuda file {}", cuda_file);
 
-        let re = Regex::new("[_]{2}global[_]{2}[_a-zA-Z()\\s]*\\svoid\\s([a-zA-Z0-9_]*)")?;
+        let re = Regex::new("[_]{2}global[_]{2}[_a-zA-Z0-9(), ]*\\svoid\\s([a-zA-Z0-9_-]*)")?;
         let mut kernel = fs::read_to_string("tests/init.cu")?;
 
         let mut kernel_name = String::new();
@@ -574,6 +574,12 @@ mod tests {
             println!("[run] profiling : kernel {}", kernel_name);
         }
         assert_eq!("matmul_wmma_kernel", kernel_name);
+
+        kernel = fs::read_to_string("tests/memory_compute_overlap.cu")?;
+        for cap in re.captures_iter(&kernel) {
+            kernel_name = cap[1].to_string();
+            println!("[run] profiling : kernel {}", kernel_name);
+        }
 
         let vec_trajectories =
             get_trajectories(format!("{}/logs/{}/rl-ncu", parameters.working_dir, item))?;
