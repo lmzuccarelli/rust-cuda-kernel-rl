@@ -12,7 +12,7 @@ pub async fn process_post_call(
 ) -> Result<String, Box<dyn std::error::Error>> {
     let client = Client::builder()
         .danger_accept_invalid_certs(true)
-        .timeout(Duration::new(750, 0))
+        .timeout(Duration::new(1000, 0))
         .build()?;
     let client_response = client
         .post(url)
@@ -25,7 +25,7 @@ pub async fn process_post_call(
     let response = client_response.bytes().await?;
     let doc_content = String::from_utf8(response.to_vec())?;
 
-    // write to file is file_name is set
+    // write to file if file_name is set
     // regardless of pass/fail
     match file_name {
         Some(name) => {
@@ -37,7 +37,7 @@ pub async fn process_post_call(
     }
     match status {
         StatusCode::OK => {
-            log::info!("[process_post_call] successful");
+            log::info!("[process_post_call] completed successfully");
         }
         _ => {
             return Err(Box::from(format!("[process_post_call] failed {}", status)));
@@ -49,7 +49,7 @@ pub async fn process_post_call(
 pub async fn process_get_call(url: String) -> Result<String, Box<dyn std::error::Error>> {
     let client = Client::builder()
         .danger_accept_invalid_certs(true)
-        .timeout(Duration::new(750, 0))
+        .timeout(Duration::new(1000, 0))
         .build()?;
     log::trace!("[process_get_call] {}", url);
     let client_response = client.get(url).send().await?;

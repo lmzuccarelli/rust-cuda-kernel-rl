@@ -461,11 +461,19 @@ impl ControllerInterface for Controller {
                 log::info!("[execute_agent_flow] calling llm (task generate code)");
                 let url = format!("{}/v1/prompt", parameters.llm_server_url);
                 let file_name = format!("{}/{}_llm_response.txt", local_target_dir, plan.technique);
-                let contents = process_post_call(Some(file_name), url, task_prompt).await?;
-
-                // extract code
-                let code = extract_code(contents)?;
-                fs::write(format!("{}/{}.cu", local_target_dir, plan.technique), code)?;
+                let contents_res = process_post_call(Some(file_name), url, task_prompt).await;
+                match contents_res {
+                    Ok(contents) => {
+                        // extract code
+                        let code = extract_code(contents)?;
+                        fs::write(format!("{}/{}.cu", local_target_dir, plan.technique), code)?;
+                    }
+                    Err(_) => {
+                        log::error!(
+                            "[execute_agent_flow] process_post_call call failed, skipping extract code function"
+                        );
+                    }
+                }
             }
         }
         Ok(())
