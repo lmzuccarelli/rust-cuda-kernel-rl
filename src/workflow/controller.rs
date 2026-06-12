@@ -56,7 +56,10 @@ impl ControllerInterface for Controller {
         for item in parameters.workflow_batch.iter() {
             log::info!("[execute_baseline_flow] item {}", item);
             // ensure logs directory is created for each cuda-kernel
-            fs::create_dir_all(format!("logs/{}/rl-ncu/baseline", item))?;
+            fs::create_dir_all(format!(
+                "logs/{}/{}/rl-ncu/baseline",
+                parameters.llm_model, item
+            ))?;
 
             let mut elapsed_cycles = 0_u64;
             let mut code = String::new();
@@ -86,8 +89,9 @@ impl ControllerInterface for Controller {
 
             let x = parameters.flow_control;
             let baseline_dir = format!(
-                "{}/out/{}/rl-ncu/baseline",
+                "{}/out/{}/{}/rl-ncu/baseline",
                 parameters.working_dir.to_owned(),
+                parameters.llm_model,
                 item
             );
             let payload = format!(
@@ -171,7 +175,6 @@ impl ControllerInterface for Controller {
                 log::info!(
                     "[execute_baseline_flow] baseline calling llm endpoint (optimization plan)"
                 );
-
                 // get the top_n matching optimizations in json format from the llm
                 let avail_opt = get_available_optimizations();
                 let prompt_op = get_optimization_plan(
@@ -202,8 +205,9 @@ impl ControllerInterface for Controller {
                     // Generate a shorter 8-character ID (6 bytes)
                     let short = short_id_with_bytes(6)?;
                     let trajectory_dir = format!(
-                        "{}/logs/{}/rl-ncu/trajectory_{}_{}",
+                        "{}/logs/{}/{}/rl-ncu/trajectory_{}_{}",
                         parameters.working_dir,
+                        parameters.llm_model,
                         item,
                         x + 1,
                         short
@@ -257,7 +261,10 @@ impl ControllerInterface for Controller {
                     }
                 }
 
-                let dir = format!("{}/out/{}/rl-ncu", parameters.working_dir, item);
+                let dir = format!(
+                    "{}/out/{}/{}/rl-ncu",
+                    parameters.working_dir, parameters.llm_model, item
+                );
                 let url = format!("{}/v1/upload", parameters.compile_server_url);
                 extract_code_all(
                     dir,
@@ -281,11 +288,16 @@ impl ControllerInterface for Controller {
             // get baseline state and elapsed_cycles
             // optimization plans were calculated in the baseline run
             // no optimization plan (json) file is found in the step_0 directories
-            let baseline_dir = format!("{}/logs/{}/rl-ncu/baseline", parameters.working_dir, item);
+            let baseline_dir = format!(
+                "{}/logs/{}/{}/rl-ncu/baseline",
+                parameters.working_dir, parameters.llm_model, item
+            );
             let baseline_ncu_report = fs::read_to_string(format!("{}/profile.txt", baseline_dir))?;
             let baseline_elapsed_cycles = Profile::get_elapsed_cycles(baseline_ncu_report.clone())?;
-            let trajectories =
-                get_trajectories(format!("{}/logs/{}/rl-ncu", parameters.working_dir, item))?;
+            let trajectories = get_trajectories(format!(
+                "{}/logs/{}/{}/rl-ncu",
+                parameters.working_dir, parameters.llm_model, item
+            ))?;
             log::debug!("[execute_agent_flow] trajectories {:#?}", trajectories);
             let current_trajectory = "trajectory_4_cio9MJb6";
             log::info!("[execute_agent_flow] trajectory   : {}", current_trajectory);
@@ -481,8 +493,9 @@ impl ControllerInterface for Controller {
                     combined,
                 );
                 let local_target_dir = format!(
-                    "{}/logs/{}/rl-ncu/{}/step_{}",
+                    "{}/logs/{}/rl-ncu/{}/{}/step_{}",
                     parameters.working_dir,
+                    parameters.llm_model,
                     item,
                     current_trajectory,
                     step + 1
