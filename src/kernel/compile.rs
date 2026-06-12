@@ -22,6 +22,7 @@ impl CompileInterface for Compile {
         let start = Instant::now();
 
         // create output directory
+        log::info!("[run] compile using directory {}", work_item.target_dir);
         fs::create_dir_all(format!("{}/build", work_item.target_dir))?;
 
         // create the cuda_model.cuh file

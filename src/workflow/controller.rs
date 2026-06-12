@@ -299,17 +299,13 @@ impl ControllerInterface for Controller {
                 parameters.working_dir, parameters.llm_model, item
             ))?;
             log::debug!("[execute_agent_flow] trajectories {:#?}", trajectories);
-            let current_trajectory = "trajectory_4_cio9MJb6";
+            let current_trajectory = "trajectory_5_q5HKns9w";
             log::info!("[execute_agent_flow] trajectory   : {}", current_trajectory);
             let &mut mut fallback = &mut false;
             let mut plan_count = parameters.max_rollout - 1;
 
             for step in parameters.rollout_start..parameters.max_rollout {
                 log::info!("[execute_agent_flow] current step : {}", step);
-                // plan_count starts at 9 and then decrements by one until we reach 4
-                if plan_count <= 4 {
-                    plan_count = 4;
-                }
                 let local_target_dir = format!(
                     "{}/logs/{}/{}/rl-ncu/{}/step_{}",
                     parameters.working_dir, parameters.llm_model, item, current_trajectory, step
@@ -449,19 +445,36 @@ impl ControllerInterface for Controller {
                 log::info!("[execute_agent_flow] calling llm (optimization plan)");
                 let url = format!("{}/v1/prompt", parameters.llm_server_url);
                 let file_name = format!("{}/optimization-plan.json", local_target_dir);
-                let json_plan = process_post_call(Some(file_name), url, prompt_op).await?;
+                let json_plan_res = process_post_call(Some(file_name), url, prompt_op).await;
+                let json_plan = match json_plan_res {
+                    Ok(contents) => {
+                        log::info!(
+                            "[execute_agent_flow] calling llm json optimization plan completed successfully"
+                        );
+                        contents
+                    }
+                    Err(e) => {
+                        log::error!(
+                            "[execute_agent_flow] calling llm json optimization plan failed {}",
+                            e
+                        );
+                        fallback = true;
+                        continue;
+                    }
+                };
+                // parse the optimization plan
                 let json_plan_updated = json_plan.replace("```json", "").replace("```", "");
                 let plans_res = serde_json::from_str::<Vec<OptimizationPlan>>(&json_plan_updated);
                 let plans = match plans_res {
                     Ok(vec_plans) => {
                         log::info!(
-                            "[execute_agent_flow] calling llm optimization plan completed successfully"
+                            "[execute_agent_flow] parsing optimization plan completed successfully"
                         );
                         vec_plans
                     }
                     Err(e) => {
                         log::error!(
-                            "[execute_agent_flow] calling llm optimization plan failed {}",
+                            "[execute_agent_flow] parsing optimization plan failed {}",
                             e
                         );
                         fallback = true;
@@ -479,10 +492,12 @@ impl ControllerInterface for Controller {
                 }
 
                 // 10. create complex prompt and execute for the next step
+                // if this fails it due to regex (this will break our loop)
                 let category = Profile::get_category(state.clone())?;
-                // pick the weighted plan
+                // pick the weighted plan should not fail (unless WeightedIndex fails - severe)
                 let plan = pick_weighted(plans.clone())?;
                 let state_category = get_performance_state_category();
+                // if file read files this should break the loop
                 let combined = get_combined(state_category)?;
                 let task_prompt = get_task_generate_code_prompt(
                     plan.technique.clone(),
@@ -551,6 +566,10 @@ impl ControllerInterface for Controller {
                                     plan.technique
                                 );
                                 plan_count -= 1;
+                                // plan_count starts at max_rollout -1 and then decrements by one until we reach 4
+                                if plan_count <= 4 {
+                                    plan_count = 4;
+                                }
                             }
                             Err(e) => {
                                 log::error!(
