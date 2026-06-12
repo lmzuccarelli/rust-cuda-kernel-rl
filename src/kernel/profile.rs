@@ -8,10 +8,10 @@ use std::time::Instant;
 
 pub trait ProfileInterface {
     async fn run(work_item: WorkItem) -> Result<String, Box<dyn std::error::Error>>;
-    fn get_elapsed_cycles(ncu_report: String) -> Result<u64, Box<dyn std::error::Error>>;
+    fn get_elapsed_cycles(ncu_report: String) -> Result<i64, Box<dyn std::error::Error>>;
     fn calculate_improvement(
-        baseline: u64,
-        current: u64,
+        baseline: i64,
+        current: i64,
     ) -> Result<(f64, f64), Box<dyn std::error::Error>>;
     fn get_category(state_report: String) -> Result<String, Box<dyn std::error::Error>>;
 }
@@ -95,11 +95,11 @@ impl ProfileInterface for Profile {
         Ok(stdout)
     }
 
-    fn get_elapsed_cycles(ncu_report: String) -> Result<u64, Box<dyn std::error::Error>> {
+    fn get_elapsed_cycles(ncu_report: String) -> Result<i64, Box<dyn std::error::Error>> {
         let re = Regex::new("[\\s]{4}Elapsed\\sCycles[\\s]+cycle[\\s]+([0-9,]*)")?;
         let mut elapsed_cycles = 0;
         for cap in re.captures_iter(&ncu_report) {
-            elapsed_cycles = cap[1].to_string().replace(",", "").parse::<u64>()?;
+            elapsed_cycles = cap[1].to_string().replace(",", "").parse::<i64>()?;
             log::trace!("[get_elapsed_cycles] {}", elapsed_cycles);
         }
         Ok(elapsed_cycles)
@@ -116,9 +116,11 @@ impl ProfileInterface for Profile {
     }
 
     fn calculate_improvement(
-        baseline: u64,
-        current: u64,
+        baseline: i64,
+        current: i64,
     ) -> Result<(f64, f64), Box<dyn std::error::Error>> {
+        let res = baseline - current;
+        println!("DEBUG LMZ {}", res);
         let mut reward = (baseline - current) as f64 / baseline as f64;
         if reward < 0.0 {
             // add penalty for being worse

@@ -61,7 +61,7 @@ impl ControllerInterface for Controller {
                 parameters.llm_model, item
             ))?;
 
-            let mut elapsed_cycles = 0_u64;
+            let mut elapsed_cycles = 0_i64;
             let mut code = String::new();
             let mut ncu_report = String::new();
             let mut state = String::new();
@@ -311,8 +311,8 @@ impl ControllerInterface for Controller {
                     plan_count = 4;
                 }
                 let local_target_dir = format!(
-                    "{}/logs/{}/rl-ncu/{}/step_{}",
-                    parameters.working_dir, item, current_trajectory, step
+                    "{}/logs/{}/{}/rl-ncu/{}/step_{}",
+                    parameters.working_dir, parameters.llm_model, item, current_trajectory, step
                 );
                 let target_dir = local_target_dir.replace("/logs/", "/out/");
                 log::info!(
@@ -598,37 +598,48 @@ mod tests {
         };
 
         let item = "level1/001_Square_matrix_multiplication";
-        log::warn!("[execute_baseline_flow] testing current flow control");
-        let ncu_report = fs::read_to_string(format!("logs/{}/rl-ncu/baseline/profile.txt", item))?;
+        let model = "opus-4-6";
+        println!("[execute_baseline_flow] testing current flow control");
+        let ncu_report = fs::read_to_string(format!(
+            "logs/{}/{}/rl-ncu/baseline/profile.txt",
+            model, item
+        ))?;
         let elapsed_cycles = Profile::get_elapsed_cycles(ncu_report.clone())?;
-        log::info!(
+        println!(
             "[execute_baseline_flow] testing elapsed_cycles {}",
             elapsed_cycles
         );
         let (result, reward) = Profile::calculate_improvement(elapsed_cycles, 7677773)?;
-        log::info!(
+        println!(
             "[execute_baseline_flow] testing result {} : reward {}",
-            result,
-            reward
+            result, reward
         );
+
+        let (result, reward) = Profile::calculate_improvement(38724415, 38732739)?;
+        println!(
+            "[execute_baseline_flow] testing result {} : reward {}",
+            result, reward
+        );
+
         let json_plan = fs::read_to_string(format!(
-            "logs/{}/rl-ncu/trajectory_1_mINMOfqW/step_0/optimization-plan.json",
-            item
+            "logs/{}/{}/rl-ncu/trajectory_1_mINMOfqW/step_0/optimization-plan.json",
+            model, item
         ))?;
         let state = fs::read_to_string(format!(
-            "logs/{}/rl-ncu/baseline/llm_state_response.txt",
-            item
+            "logs/{}/{}/rl-ncu/baseline/llm_state_response.txt",
+            model, item
         ))?;
 
         let category = Profile::get_category(state)?;
-        log::info!("[execute_baseline_flow] testing category {}", category);
+        println!("[execute_baseline_flow] testing category {}", category);
 
         println!();
 
         let json_plan_updated = json_plan.replace("```json", "").replace("```", "");
         let plans = serde_json::from_str::<Vec<OptimizationPlan>>(&json_plan_updated)?;
+        /*
         for op in plans.iter() {
-            log::info!(
+            println!(
                 "[execute_baseline_flow] testing technique   : {}",
                 op.technique
             );
@@ -642,28 +653,28 @@ mod tests {
             );
             println!();
         }
+        */
 
         println!();
 
-        for _x in 0..10 {
+        for _x in 0..3 {
             let pick = pick_weighted(plans.clone())?;
-            log::info!(
+            println!(
                 "[execute_baseline_flow] testing weighted plan {} {}",
-                pick.technique,
-                pick.relevance_score
+                pick.technique, pick.relevance_score
             );
         }
 
         let base_dir = format!(
-            "{}/logs/{}/rl-ncu/trajectory_1_mINMOfqW/step_0",
-            parameters.working_dir, item
+            "{}/logs/{}/{}/rl-ncu/trajectory_1_mINMOfqW/step_0",
+            parameters.working_dir, model, item
         );
-        let (cuda_file, cuda_kernel) = find_cuda_file(base_dir, &mut false)?;
-        log::info!("[execute_baseline_flow] testing cuda file {}", cuda_file);
-        log::info!(
-            "[execute_baseline_flow] testing cuda kernel {}",
-            cuda_kernel
-        );
+        let (_cuda_file, _cuda_kernel) = find_cuda_file(base_dir, &mut false)?;
+        //println!("[execute_baseline_flow] testing cuda file {}", cuda_file);
+        //println!(
+        //    "[execute_baseline_flow] testing cuda kernel {}",
+        //    cuda_kernel
+        //);
 
         let re = Regex::new("[_]{2}global[_]{2}[_a-zA-Z0-9(), ]*\\svoid\\s([a-zA-Z0-9_-]*)")?;
         let mut kernel = fs::read_to_string("tests/init.cu")?;
@@ -688,8 +699,10 @@ mod tests {
             println!("[run] profiling : kernel {}", kernel_name);
         }
 
-        let vec_trajectories =
-            get_trajectories(format!("{}/logs/{}/rl-ncu", parameters.working_dir, item))?;
+        let vec_trajectories = get_trajectories(format!(
+            "{}/logs/{}/{}/rl-ncu",
+            parameters.working_dir, model, item
+        ))?;
         println!("{:?}", vec_trajectories);
 
         Ok(())
