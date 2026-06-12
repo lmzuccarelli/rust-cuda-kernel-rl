@@ -302,11 +302,11 @@ impl ControllerInterface for Controller {
             let current_trajectory = "trajectory_4_cio9MJb6";
             log::info!("[execute_agent_flow] trajectory   : {}", current_trajectory);
             let &mut mut fallback = &mut false;
+            let mut plan_count = parameters.max_rollout - 1;
 
             for step in parameters.rollout_start..parameters.max_rollout {
                 log::info!("[execute_agent_flow] current step : {}", step);
                 // plan_count starts at 9 and then decrements by one until we reach 4
-                let mut plan_count = parameters.max_rollout - (step + 1);
                 if plan_count <= 4 {
                     plan_count = 4;
                 }
@@ -493,7 +493,7 @@ impl ControllerInterface for Controller {
                     combined,
                 );
                 let local_target_dir = format!(
-                    "{}/logs/{}/rl-ncu/{}/{}/step_{}",
+                    "{}/logs/{}/{}/rl-ncu/{}/step_{}",
                     parameters.working_dir,
                     parameters.llm_model,
                     item,
@@ -550,6 +550,7 @@ impl ControllerInterface for Controller {
                                     "[execute_agent_flow] saved cuda kernel {}",
                                     plan.technique
                                 );
+                                plan_count -= 1;
                             }
                             Err(e) => {
                                 log::error!(

@@ -119,8 +119,6 @@ impl ProfileInterface for Profile {
         baseline: i64,
         current: i64,
     ) -> Result<(f64, f64), Box<dyn std::error::Error>> {
-        let res = baseline - current;
-        println!("DEBUG LMZ {}", res);
         let mut reward = (baseline - current) as f64 / baseline as f64;
         if reward < 0.0 {
             // add penalty for being worse
