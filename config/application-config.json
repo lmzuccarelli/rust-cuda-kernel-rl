@@ -8,8 +8,9 @@
     "level1/001_Square_matrix_multiplication"
   ],
   "working_dir": "/home/lzuccarelli/Projects/rust-cuda-kernel-rl",
+  "llm_model": "opus-4-6",
   "max_rollout": 10,
-  "rollout_start": 3,
+  "rollout_start": 4,
   "flow_control": 0,
   "gpu_arch": 86
 }

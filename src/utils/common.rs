@@ -134,24 +134,43 @@ pub fn pick_weighted(
     Ok(pick)
 }
 
-pub fn find_cuda_file(dir: String) -> Result<String, Box<dyn std::error::Error>> {
-    let files = fs::read_dir(dir)?;
+pub fn find_cuda_file(
+    dir: String,
+    fallback: &mut bool,
+) -> Result<(String, String), Box<dyn std::error::Error>> {
+    let files = fs::read_dir(dir.clone())?;
+    log::trace!("[find_cuda_file] using directory {}", dir);
+    let mut cuda_kernel = String::new();
     let mut cuda_file = String::new();
-    for f in files {
-        match f {
-            Ok(name) => {
-                let f = name.file_name().to_string_lossy().to_string();
-                if f.contains(".cu") {
-                    cuda_file = f;
-                    break;
+    if !*fallback {
+        for f in files {
+            match f {
+                Ok(name) => {
+                    let f = name.file_name().to_string_lossy().to_string();
+                    if f.contains(".cu") {
+                        // find the first kernel file in the directory
+                        cuda_file = f.clone();
+                        cuda_kernel = fs::read_to_string(format!("{}/{}", dir, f))?;
+                        break;
+                    }
                 }
-            }
-            Err(e) => {
-                return Err(Box::from(format!("[find_cuda_file] error {}", e)));
+                Err(e) => {
+                    return Err(Box::from(format!("[find_cuda_file] error {}", e)));
+                }
             }
         }
     }
-    Ok(cuda_file)
+    if *fallback | cuda_kernel.is_empty() {
+        let fallback_path = dir.split("trajectory_").next().unwrap_or("baseline");
+        // use the baseline, I found that by falling back to the previous
+        // step perpetuates errors and they just repeat going forward
+        let fallback_kernel = format!("{}/baseline/init.cu", fallback_path);
+        log::info!("[find_cuda_file] using fallback kernel {}", fallback_kernel);
+        cuda_kernel = fs::read_to_string(&fallback_kernel)?;
+        cuda_file = "init.cu".to_string();
+        *fallback = false;
+    }
+    Ok((cuda_file, cuda_kernel))
 }
 
 pub async fn extract_code_from_call(

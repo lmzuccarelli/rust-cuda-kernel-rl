@@ -12,7 +12,7 @@ pub async fn process_post_call(
 ) -> Result<String, Box<dyn std::error::Error>> {
     let client = Client::builder()
         .danger_accept_invalid_certs(true)
-        .timeout(Duration::new(1000, 0))
+        .timeout(Duration::new(1200, 0))
         .build()?;
     let client_response = client
         .post(url)
@@ -32,15 +32,18 @@ pub async fn process_post_call(
             fs::write(name, doc_content.clone())?;
         }
         None => {
-            log::debug!("[process_post_call] file_name not supplied (not saving to disk)");
+            log::trace!("[process_post_call] file_name not supplied (not saving to disk)");
         }
     }
     match status {
         StatusCode::OK => {
-            log::info!("[process_post_call] completed successfully");
+            log::trace!("[process_post_call] completed successfully");
         }
         _ => {
-            return Err(Box::from(format!("[process_post_call] failed {}", status)));
+            return Err(Box::from(format!(
+                "[process_post_call] failed with status {}",
+                status
+            )));
         }
     };
     Ok(doc_content)
@@ -49,7 +52,7 @@ pub async fn process_post_call(
 pub async fn process_get_call(url: String) -> Result<String, Box<dyn std::error::Error>> {
     let client = Client::builder()
         .danger_accept_invalid_certs(true)
-        .timeout(Duration::new(1000, 0))
+        .timeout(Duration::new(1200, 0))
         .build()?;
     log::trace!("[process_get_call] {}", url);
     let client_response = client.get(url).send().await?;
