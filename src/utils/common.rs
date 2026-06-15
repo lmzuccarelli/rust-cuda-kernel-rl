@@ -85,27 +85,33 @@ pub async fn extract_code_all(
     Ok(())
 }
 
-#[allow(unused)]
-pub async fn walk_trajectories(base_dir: String) -> Result<(), Box<dyn std::error::Error>> {
+pub fn find_most_performant_kernel(base_dir: String) -> Result<(), Box<dyn std::error::Error>> {
+    let re = Regex::new("reward[\\s]*:\\s([0-9\\.]+)")?;
+    let mut max_reward = 0.0;
+    let mut kernel_path = String::new();
     for e in WalkDir::new(base_dir) {
         match e {
             Ok(obj) => {
                 if obj.path().is_file() {
                     let file = obj.path().to_string_lossy();
-                    if file.contains(".cu") && file.contains("trajectory_") {
+                    if file.contains("stats.txt") {
                         let contents_res = fs::read_to_string(file.to_string());
                         match contents_res {
-                            Ok(_) => {
-                                let parts = file.split("/").collect::<Vec<&str>>();
-                                let target_dir =
-                                    format!("/{}", parts[1..parts.len() - 1].join("/"));
-                                log::info!(
-                                    "[walk_trajectories] target_dir {}",
-                                    target_dir.replace("/logs/", "/out/")
-                                );
+                            Ok(contents) => {
+                                for cap in re.captures_iter(&contents) {
+                                    let reward = cap[1].to_string().parse::<f64>()?;
+                                    if reward > max_reward {
+                                        max_reward = reward;
+                                        kernel_path = file.to_string();
+                                    }
+                                    log::info!("[find_most_performant_kernel] reward {}", reward);
+                                }
                             }
                             Err(e) => {
-                                log::error!("[walk_trajectories] error reading {}", e);
+                                log::error!(
+                                    "[find_most_performant_kernel] error reading stats file{}",
+                                    e
+                                );
                             }
                         }
                     }
@@ -116,6 +122,20 @@ pub async fn walk_trajectories(base_dir: String) -> Result<(), Box<dyn std::erro
             }
         }
     }
+    let vec_parts: Vec<&str> = kernel_path.split("/").collect();
+    let updated_path = format!("{}", vec_parts[..vec_parts.len() - 1].join("/"));
+    let (kernel_name, kernel_contents) = find_cuda_file(updated_path.clone(), &mut false)?;
+    log::info!(
+        "find_most_performant_kernel] found kernel {} in path {} with reward {}",
+        kernel_name,
+        updated_path,
+        max_reward
+    );
+    let write_dir: Vec<&str> = updated_path.split("rl-ncu").collect();
+    fs::write(
+        format!("{}/rl-ncu/final_rl_cuda_perf.cu", write_dir[0]),
+        kernel_contents,
+    )?;
     Ok(())
 }
 

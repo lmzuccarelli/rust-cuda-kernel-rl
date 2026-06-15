@@ -28,8 +28,8 @@ inline __host__ __device__ size_t div_ceil(size_t a, size_t b) {
 }
 
 // -------------------- Kernel --------------------
-__global__ __launch_bounds__(THREADS_PER_BLOCK)
-void matmul_wmma_kernel(
+__global__ void __launch_bounds__(THREADS_PER_BLOCK)
+matmul_wmma_kernel(
     const half* __restrict__ A,
     const half* __restrict__ B,
     half* __restrict__ C,

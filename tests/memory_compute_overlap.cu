@@ -98,8 +98,8 @@ __device__ __forceinline__ void async_load_B(
     }
 }
 
-__global__ __launch_bounds__(BLOCK_SIZE, 2)
-void mmaAsyncStage4Kernel(
+__global__ void __launch_bounds__(BLOCK_SIZE, 2)
+mmaAsyncStage4Kernel(
     const half *__restrict__ A,
     const half *__restrict__ B,
     half *__restrict__ C,

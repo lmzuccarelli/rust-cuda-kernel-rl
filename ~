@@ -6,8 +6,8 @@ use crate::inference::prompts::{
 };
 use crate::kernel::profile::{Profile, ProfileInterface};
 use crate::utils::common::{
-    extract_code, extract_code_all, extract_code_from_call, find_cuda_file,
-    find_most_performant_kernel, get_trajectories, pick_weighted,
+    extract_code, extract_code_all, extract_code_from_call, find_cuda_file, get_trajectories,
+    pick_weighted,
 };
 use crate::workflow::api_client::{process_get_call, process_post_call};
 use custom_logger as log;
@@ -299,7 +299,7 @@ impl ControllerInterface for Controller {
                 parameters.working_dir, parameters.llm_model, item
             ))?;
             log::debug!("[execute_agent_flow] trajectories {:#?}", trajectories);
-            let current_trajectory = "trajectory_6__5jZSs_g";
+            let current_trajectory = "trajectory_5_q5HKns9w";
             log::info!("[execute_agent_flow] trajectory   : {}", current_trajectory);
             let &mut mut fallback = &mut false;
             let mut plan_count = parameters.max_rollout - 1;
@@ -316,7 +316,8 @@ impl ControllerInterface for Controller {
                     local_target_dir
                 );
 
-                let next_target_dir = format!(
+                // prepare next step
+                let local_target_dir = format!(
                     "{}/logs/{}/{}/rl-ncu/{}/step_{}",
                     parameters.working_dir,
                     parameters.llm_model,
@@ -324,22 +325,20 @@ impl ControllerInterface for Controller {
                     current_trajectory,
                     step + 1
                 );
-                if step < parameters.max_rollout {
-                    let res = fs::create_dir_all(next_target_dir.clone());
-                    match res {
-                        Ok(_) => {
-                            log::info!(
-                                "[execute_agent_flow] created next step directory {}",
-                                local_target_dir
-                            );
-                        }
-                        Err(e) => {
-                            log::error!("[execute_agent_flow] failed to create directory {}", e);
-                            fallback = true;
-                            continue;
-                        }
+                let res = fs::create_dir_all(local_target_dir.clone());
+                match res {
+                    Ok(_) => {
+                        log::info!(
+                            "[execute_agent_flow] created directory {}",
+                            local_target_dir
+                        );
                     }
-                }
+                    Err(e) => {
+                        log::error!("[execute_agent_flow] failed to create directory {}", e);
+                        fallback = true;
+                        continue;
+                    }
+                };
 
                 // N.B. the error handling is purposely set to "try" not break and leave the loop
                 // If there is an error the objective is to try continue to the next step moving using the basline kernel
@@ -348,7 +347,6 @@ impl ControllerInterface for Controller {
                 // 1. read kernel code
                 // If for any reason the cuda kernel file canot be read exit immediately
                 let (cuda_file, code) = find_cuda_file(local_target_dir.clone(), &mut fallback)?;
-                log::info!("[execute_agent_flow] using kernel file {}", cuda_file);
                 let payload = format!(
                     r##"{{ "name": "{}", "working_dir": "{}", "gpu_arch": "{}" , "target_dir": "{}", "kernel_name": "{}" , "code": {:?} }}"##,
                     item, parameters.working_dir, parameters.gpu_arch, target_dir, cuda_file, code
@@ -535,7 +533,7 @@ impl ControllerInterface for Controller {
                 );
 
                 let wr_res = fs::write(
-                    format!("{}/{}.prompt", next_target_dir, plan.technique),
+                    format!("{}/{}.prompt", local_target_dir, plan.technique),
                     task_prompt.clone(),
                 );
 
@@ -555,14 +553,14 @@ impl ControllerInterface for Controller {
 
                 log::info!("[execute_agent_flow] calling llm (task generate code)");
                 let url = format!("{}/v1/prompt", parameters.llm_server_url);
-                let file_name = format!("{}/{}_llm_response.txt", next_target_dir, plan.technique);
+                let file_name = format!("{}/{}_llm_response.txt", local_target_dir, plan.technique);
                 let contents_res = process_post_call(Some(file_name), url, task_prompt).await;
                 match contents_res {
                     Ok(contents) => {
                         // extract code
                         let code = extract_code(contents)?;
                         let wr_res =
-                            fs::write(format!("{}/{}.cu", next_target_dir, plan.technique), code);
+                            fs::write(format!("{}/{}.cu", local_target_dir, plan.technique), code);
                         match wr_res {
                             Ok(_) => {
                                 log::info!(
@@ -593,8 +591,6 @@ impl ControllerInterface for Controller {
                     }
                 }
             }
-            // finally find the optimal cuda kernel
-            find_most_performant_kernel(baseline_dir)?;
         }
         Ok(())
     }
@@ -606,7 +602,7 @@ mod tests {
     use super::*;
     use crate::{
         config::load::{ConfigInterface, ImplConfigInterface},
-        utils::common::{find_most_performant_kernel, get_trajectories},
+        utils::common::get_trajectories,
     };
     use regex::Regex;
     use std::fs;
@@ -663,6 +659,23 @@ mod tests {
 
         let json_plan_updated = json_plan.replace("```json", "").replace("```", "");
         let plans = serde_json::from_str::<Vec<OptimizationPlan>>(&json_plan_updated)?;
+        /*
+        for op in plans.iter() {
+            println!(
+                "[execute_baseline_flow] testing technique   : {}",
+                op.technique
+            );
+            log::info!(
+                "[execute_baseline_flow] testing relevance   : {}",
+                op.relevance_score
+            );
+            log::info!(
+                "[execute_baseline_flow] testing description : {}",
+                op.description
+            );
+            println!();
+        }
+        */
 
         println!();
 
@@ -680,30 +693,12 @@ mod tests {
         );
         let (_cuda_file, _cuda_kernel) = find_cuda_file(base_dir, &mut false)?;
 
-        let cuda_kernel = fs::read_to_string("tests/memory_compute_overlap.cu")?;
+        let cuda_kernel = fs::read_to_string("tests/init.cu")?;
         let vec_lines: Vec<&str> = cuda_kernel.split("\n").collect();
-        let re = Regex::new("[_]{2}global[_]{2}\\svoid\\s([a-zA-Z0-9_]*)")?;
-        let re_simple = Regex::new("([a-zA-Z0-9_]+)")?;
-        let mut kernel_name;
-        let mut count = 0;
         for line in vec_lines.iter() {
-            if line.contains("__global__ void") && !line.contains("__launch_bounds__") {
-                for cap in re.captures_iter(&line) {
-                    kernel_name = cap[1].to_string();
-                    println!("[run] profiling kernel {}", kernel_name);
-                }
+            if line.contains("__global__ void") {
+                println!("DEBUG LMZ {}", line);
             }
-            if line.contains("__global__ void __launch_bounds__") {
-                println!("DEBUG LMZ {}", vec_lines[count + 1]);
-                for cap in re_simple.captures_iter(&vec_lines[count + 1]) {
-                    kernel_name = cap[1].to_string();
-                    println!(
-                        "[run] profiling with __launch_bounds__ kernel {}",
-                        kernel_name
-                    );
-                }
-            }
-            count += 1;
         }
 
         let vec_trajectories = get_trajectories(format!(
@@ -711,11 +706,6 @@ mod tests {
             parameters.working_dir, model, item
         ))?;
         println!("{:?}", vec_trajectories);
-
-        find_most_performant_kernel(format!(
-            "{}/logs/{}/{}/rl-ncu",
-            parameters.working_dir, model, item
-        ))?;
 
         Ok(())
     }

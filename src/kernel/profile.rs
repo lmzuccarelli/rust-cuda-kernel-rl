@@ -30,27 +30,21 @@ impl ProfileInterface for Profile {
             Some(name) => format!("{}/{}", work_item.target_dir, name),
             None => format!("kernelbench-cuda/{}/init.cu", work_item.name),
         };
-        log::debug!("[run] profile kernel {}", kernel_file);
         let kernel = fs::read_to_string(kernel_file)?;
-        let re = Regex::new("[_]{2}global[_]{2}[_a-zA-Z0-9(), ]*[\\svoid\\s]+([a-zA-Z0-9_-]*)")?;
-        let mut kernel_name = String::new();
-        for cap in re.captures_iter(&kernel) {
-            kernel_name = cap[1].to_string();
-            log::info!("[run] profiling : kernel {}", kernel_name);
-        }
-        if kernel_name.is_empty() {
-            return Err(Box::from("[run] profile could not find kernel name"));
-        }
+        // handle multiple kernel names
+        let kernel_name = extract_kernel_name(kernel)?;
+        log::info!("[run] profiling kernel {}", kernel_name[0]);
 
         // for profiling we set the current working directory
         env::set_current_dir(format!("{}/build", work_item.target_dir))?;
+        // TODO: handle multiple kernel names
         let output = Command::new("sudo")
             .arg(format!("LD_LIBRARY_PATH={}", ld_lib))
             .arg("ncu")
             .arg("--set")
             .arg("full")
             .arg("-k")
-            .arg(kernel_name.clone())
+            .arg(kernel_name[0].clone())
             .arg("-o")
             .arg("profile")
             .arg("-f")
@@ -88,7 +82,7 @@ impl ProfileInterface for Profile {
         }
 
         // write the final report to disk
-        fs::write(format!("{}.profile", kernel_name), stdout.clone())?;
+        fs::write(format!("{}.profile", kernel_name[0]), stdout.clone())?;
 
         // restore working dir
         env::set_current_dir(work_item.working_dir)?;
@@ -127,4 +121,26 @@ impl ProfileInterface for Profile {
         let result = reward * 100.0;
         Ok((result, reward))
     }
+}
+
+fn extract_kernel_name(cuda_kernel: String) -> Result<Vec<String>, Box<dyn std::error::Error>> {
+    let mut vec_res = vec![];
+    let vec_lines: Vec<&str> = cuda_kernel.split("\n").collect();
+    let re = Regex::new("[_]{2}global[_]{2}\\svoid\\s([a-zA-Z0-9_]*)")?;
+    let re_simple = Regex::new("([a-zA-Z0-9_]+)")?;
+    let mut count = 0;
+    for line in vec_lines.iter() {
+        if line.contains("__global__ void") && !line.contains("__launch_bounds__") {
+            for cap in re.captures_iter(&line) {
+                vec_res.push(cap[1].to_string());
+            }
+        }
+        if line.contains("__global__ void __launch_bounds__") {
+            for cap in re_simple.captures_iter(&vec_lines[count + 1]) {
+                vec_res.push(cap[1].to_string());
+            }
+        }
+        count += 1;
+    }
+    Ok(vec_res)
 }
