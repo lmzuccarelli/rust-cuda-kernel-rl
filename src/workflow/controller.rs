@@ -316,6 +316,30 @@ impl ControllerInterface for Controller {
                     local_target_dir
                 );
 
+                // prepare next step
+                let local_target_dir = format!(
+                    "{}/logs/{}/{}/rl-ncu/{}/step_{}",
+                    parameters.working_dir,
+                    parameters.llm_model,
+                    item,
+                    current_trajectory,
+                    step + 1
+                );
+                let res = fs::create_dir_all(local_target_dir.clone());
+                match res {
+                    Ok(_) => {
+                        log::info!(
+                            "[execute_agent_flow] created directory {}",
+                            local_target_dir
+                        );
+                    }
+                    Err(e) => {
+                        log::error!("[execute_agent_flow] failed to create directory {}", e);
+                        fallback = true;
+                        continue;
+                    }
+                };
+
                 // N.B. the error handling is purposely set to "try" not break and leave the loop
                 // If there is an error the objective is to try continue to the next step moving using the basline kernel
                 // Nested Ok() Err() checks have been avoided for legibility reasons
@@ -507,28 +531,6 @@ impl ControllerInterface for Controller {
                     code.to_owned(),
                     combined,
                 );
-                let local_target_dir = format!(
-                    "{}/logs/{}/{}/rl-ncu/{}/step_{}",
-                    parameters.working_dir,
-                    parameters.llm_model,
-                    item,
-                    current_trajectory,
-                    step + 1
-                );
-                let res = fs::create_dir_all(local_target_dir.clone());
-                match res {
-                    Ok(_) => {
-                        log::info!(
-                            "[execute_agent_flow] created directory {}",
-                            local_target_dir
-                        );
-                    }
-                    Err(e) => {
-                        log::error!("[execute_agent_flow] failed to create directory {}", e);
-                        fallback = true;
-                        continue;
-                    }
-                };
 
                 let wr_res = fs::write(
                     format!("{}/{}.prompt", local_target_dir, plan.technique),
