@@ -294,10 +294,11 @@ impl ControllerInterface for Controller {
             );
             let baseline_ncu_report = fs::read_to_string(format!("{}/profile.txt", baseline_dir))?;
             let baseline_elapsed_cycles = Profile::get_elapsed_cycles(baseline_ncu_report.clone())?;
-            let trajectories = get_trajectories(format!(
+            let trajectories_dir = format!(
                 "{}/logs/{}/{}/rl-ncu",
                 parameters.working_dir, parameters.llm_model, item
-            ))?;
+            );
+            let trajectories = get_trajectories(trajectories_dir.clone())?;
             log::debug!("[execute_agent_flow] trajectories {:#?}", trajectories);
             let current_trajectory = "trajectory_6__5jZSs_g";
             log::info!("[execute_agent_flow] trajectory   : {}", current_trajectory);
@@ -324,7 +325,7 @@ impl ControllerInterface for Controller {
                     current_trajectory,
                     step + 1
                 );
-                if step < parameters.max_rollout {
+                if step < parameters.max_rollout - 1 {
                     let res = fs::create_dir_all(next_target_dir.clone());
                     match res {
                         Ok(_) => {
@@ -594,7 +595,7 @@ impl ControllerInterface for Controller {
                 }
             }
             // finally find the optimal cuda kernel
-            find_most_performant_kernel(baseline_dir)?;
+            find_most_performant_kernel(trajectories_dir)?;
         }
         Ok(())
     }

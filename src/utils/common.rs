@@ -104,7 +104,7 @@ pub fn find_most_performant_kernel(base_dir: String) -> Result<(), Box<dyn std::
                                         max_reward = reward;
                                         kernel_path = file.to_string();
                                     }
-                                    log::info!("[find_most_performant_kernel] reward {}", reward);
+                                    log::debug!("[find_most_performant_kernel] reward {}", reward);
                                 }
                             }
                             Err(e) => {
@@ -118,7 +118,7 @@ pub fn find_most_performant_kernel(base_dir: String) -> Result<(), Box<dyn std::
                 }
             }
             Err(e) => {
-                log::error!("[walk_trajectories] error : {}", e);
+                log::error!("[find_most_performant_kernel] error : {}", e);
             }
         }
     }
@@ -126,7 +126,7 @@ pub fn find_most_performant_kernel(base_dir: String) -> Result<(), Box<dyn std::
     let updated_path = format!("{}", vec_parts[..vec_parts.len() - 1].join("/"));
     let (kernel_name, kernel_contents) = find_cuda_file(updated_path.clone(), &mut false)?;
     log::info!(
-        "find_most_performant_kernel] found kernel {} in path {} with reward {}",
+        "[find_most_performant_kernel] found kernel {} in path {} with reward {}",
         kernel_name,
         updated_path,
         max_reward
