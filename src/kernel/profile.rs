@@ -131,7 +131,7 @@ impl ProfileInterface for Profile {
 fn extract_kernel_name(cuda_kernel: String) -> Result<Vec<String>, Box<dyn std::error::Error>> {
     let mut vec_res = vec![];
     let vec_lines: Vec<&str> = cuda_kernel.split("\n").collect();
-    let re = Regex::new("[_]{2}global[_]{2}\\svoid\\s([a-zA-Z0-9_]*)")?;
+    let re = Regex::new("[_]{2}global[_]{2}[\\svoid\\s]+([a-zA-Z0-9_]*)")?;
     let re_simple = Regex::new("([a-zA-Z0-9_]+)")?;
     let mut count = 0;
     for line in vec_lines.iter() {
@@ -140,9 +140,13 @@ fn extract_kernel_name(cuda_kernel: String) -> Result<Vec<String>, Box<dyn std::
                 vec_res.push(cap[1].to_string());
             }
         }
-        if line.contains("__global__ void __launch_bounds__") {
+        if line.contains("__global__ void __launch_bounds__")
+            | line.contains("__global__ __launch_bounds__")
+        {
             for cap in re_simple.captures_iter(&vec_lines[count + 1]) {
-                vec_res.push(cap[1].to_string());
+                if !cap[1].to_string().contains("void") {
+                    vec_res.push(cap[1].to_string());
+                }
             }
         }
         count += 1;

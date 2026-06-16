@@ -681,9 +681,10 @@ mod tests {
         );
         let (_cuda_file, _cuda_kernel) = find_cuda_file(base_dir, &mut false)?;
 
+        //let cuda_kernel = fs::read_to_string("tests/tensor_core_utilization.cu")?;
         let cuda_kernel = fs::read_to_string("tests/memory_compute_overlap.cu")?;
         let vec_lines: Vec<&str> = cuda_kernel.split("\n").collect();
-        let re = Regex::new("[_]{2}global[_]{2}\\svoid\\s([a-zA-Z0-9_]*)")?;
+        let re = Regex::new("[_]{2}global[_]{2}[\\svoid\\s]+([a-zA-Z0-9_]*)")?;
         let re_simple = Regex::new("([a-zA-Z0-9_]+)")?;
         let mut kernel_name;
         let mut count = 0;
@@ -694,13 +695,17 @@ mod tests {
                     println!("[run] profiling kernel {}", kernel_name);
                 }
             }
-            if line.contains("__global__ void __launch_bounds__") {
+            if line.contains("__global__ void __launch_bounds__")
+                | line.contains("__global__ __launch_bounds__")
+            {
                 for cap in re_simple.captures_iter(&vec_lines[count + 1]) {
-                    kernel_name = cap[1].to_string();
-                    println!(
-                        "[run] profiling with __launch_bounds__ kernel {}",
-                        kernel_name
-                    );
+                    if !cap[1].to_string().contains("void") {
+                        kernel_name = cap[1].to_string();
+                        println!(
+                            "[run] profiling with __launch_bounds__ kernel {}",
+                            kernel_name
+                        );
+                    }
                 }
             }
             count += 1;
