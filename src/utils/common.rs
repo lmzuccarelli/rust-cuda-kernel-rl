@@ -188,6 +188,7 @@ pub fn find_cuda_file(
         log::info!("[find_cuda_file] using fallback kernel {}", fallback_kernel);
         cuda_kernel = fs::read_to_string(&fallback_kernel)?;
         cuda_file = "init.cu".to_string();
+        fs::write(format!("{}/init.cu", dir), cuda_kernel.clone())?;
         *fallback = false;
     }
     Ok((cuda_file, cuda_kernel))

@@ -1515,7 +1515,7 @@ dependencies = [
 
 [[package]]
 name = "rust-cuda-kernel-rl"
-version = "0.3.27"
+version = "0.3.29"
 dependencies = [
  "async-trait",
  "clap",

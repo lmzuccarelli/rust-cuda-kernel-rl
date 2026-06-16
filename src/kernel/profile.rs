@@ -21,6 +21,7 @@ pub struct Profile {}
 impl ProfileInterface for Profile {
     async fn run(work_item: WorkItem) -> Result<String, Box<dyn std::error::Error>> {
         let start = Instant::now();
+        let mut profile_buffer = String::new();
 
         // ensure we read and set LD_LIBARAY_PATH envar
         let ld_lib = env::var("LD_LIBRARY_PATH")?;
@@ -32,61 +33,65 @@ impl ProfileInterface for Profile {
         };
         let kernel = fs::read_to_string(kernel_file)?;
         // handle multiple kernel names
-        let kernel_name = extract_kernel_name(kernel)?;
-        log::info!("[run] profiling kernel {}", kernel_name[0]);
-
+        let kernel_names = extract_kernel_name(kernel)?;
+        log::debug!("[run] profile kernel_names {:#?}", kernel_names);
         // for profiling we set the current working directory
         env::set_current_dir(format!("{}/build", work_item.target_dir))?;
-        // TODO: handle multiple kernel names
-        let output = Command::new("sudo")
-            .arg(format!("LD_LIBRARY_PATH={}", ld_lib))
-            .arg("ncu")
-            .arg("--set")
-            .arg("full")
-            .arg("-k")
-            .arg(kernel_name[0].clone())
-            .arg("-o")
-            .arg("profile")
-            .arg("-f")
-            .arg("main")
-            .output()?;
 
-        let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
-        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
-        let elapsed = start.elapsed();
-        log::info!("[run] profile : completed task in {:?}", elapsed);
+        for name in kernel_names.iter() {
+            log::info!("[run] profiling kernel {}", name);
+            let output = Command::new("sudo")
+                .arg(format!("LD_LIBRARY_PATH={}", ld_lib))
+                .arg("ncu")
+                .arg("--set")
+                .arg("full")
+                .arg("-k")
+                .arg(name.clone())
+                .arg("-o")
+                .arg(format!("profile-{}", name))
+                .arg("-f")
+                .arg("main")
+                .output()?;
 
-        if !output.status.success() {
-            return Err(Box::from(stderr.to_string()));
+            let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+            let elapsed = start.elapsed();
+            log::info!("[run] profile : completed task in {:?}", elapsed);
+
+            if !output.status.success() {
+                return Err(Box::from(stderr.to_string()));
+            }
+
+            // preserve output
+            println!("{}", stdout);
+
+            let output = Command::new("sudo")
+                .arg(format!("LD_LIBRARY_PATH={}", ld_lib))
+                .arg("ncu")
+                .arg("--import")
+                .arg(format!("profile-{}.ncu-rep", name))
+                .arg("--page")
+                .arg("details")
+                .output()?;
+
+            let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+            let elapsed = start.elapsed();
+            log::info!("[run] profile convert : completed task in {:?}", elapsed);
+
+            if !output.status.success() {
+                return Err(Box::from(stderr.to_string()));
+            }
+
+            // write the final report to disk
+            fs::write(format!("{}.profile", name), stdout.clone())?;
+            profile_buffer.push_str("\n\n---\n\n");
+            profile_buffer.push_str(&stdout);
         }
-
-        // preserve output
-        println!("{}", stdout);
-
-        let output = Command::new("sudo")
-            .arg(format!("LD_LIBRARY_PATH={}", ld_lib))
-            .arg("ncu")
-            .arg("--import")
-            .arg("profile.ncu-rep")
-            .arg("--page")
-            .arg("details")
-            .output()?;
-
-        let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
-        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
-        let elapsed = start.elapsed();
-        log::info!("[run] profile convert : completed task in {:?}", elapsed);
-
-        if !output.status.success() {
-            return Err(Box::from(stderr.to_string()));
-        }
-
-        // write the final report to disk
-        fs::write(format!("{}.profile", kernel_name[0]), stdout.clone())?;
-
         // restore working dir
         env::set_current_dir(work_item.working_dir)?;
-        Ok(stdout)
+
+        Ok(profile_buffer)
     }
 
     fn get_elapsed_cycles(ncu_report: String) -> Result<i64, Box<dyn std::error::Error>> {

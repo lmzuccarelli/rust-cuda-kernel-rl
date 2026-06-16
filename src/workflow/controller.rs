@@ -300,7 +300,7 @@ impl ControllerInterface for Controller {
             );
             let trajectories = get_trajectories(trajectories_dir.clone())?;
             log::debug!("[execute_agent_flow] trajectories {:#?}", trajectories);
-            let current_trajectory = "trajectory_6__5jZSs_g";
+            let current_trajectory = "trajectory_7_tOB3UgeG";
             log::info!("[execute_agent_flow] trajectory   : {}", current_trajectory);
             let &mut mut fallback = &mut false;
             let mut plan_count = parameters.max_rollout - 1;
@@ -695,7 +695,6 @@ mod tests {
                 }
             }
             if line.contains("__global__ void __launch_bounds__") {
-                println!("DEBUG LMZ {}", vec_lines[count + 1]);
                 for cap in re_simple.captures_iter(&vec_lines[count + 1]) {
                     kernel_name = cap[1].to_string();
                     println!(
