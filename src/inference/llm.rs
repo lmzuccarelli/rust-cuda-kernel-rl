@@ -1,16 +1,121 @@
 use custom_logger as log;
+use hyper::StatusCode;
+use reqwest::Client;
+use serde_derive::Deserialize;
+use serde_derive::Serialize;
+use serde_json::Value;
 use std::process::Command;
+use std::time::Duration;
 use std::time::Instant;
+
+// openapi schema
+
+#[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OpenaiChatCompletions {
+    pub id: String,
+    pub object: String,
+    pub created: i64,
+    pub model: String,
+    pub choices: Vec<Choice>,
+    pub usage: Usage,
+    #[serde(rename = "service_tier")]
+    pub service_tier: String,
+    #[serde(rename = "system_fingerprint")]
+    pub system_fingerprint: Value,
+}
+
+#[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Choice {
+    pub index: i64,
+    pub message: Message,
+    #[serde(rename = "finish_reason")]
+    pub finish_reason: String,
+}
+
+#[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Message {
+    pub role: String,
+    pub content: String,
+    pub refusal: Option<Value>,
+    pub annotations: Option<Vec<Value>>,
+}
+
+#[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Usage {
+    #[serde(rename = "prompt_tokens")]
+    pub prompt_tokens: i64,
+    #[serde(rename = "completion_tokens")]
+    pub completion_tokens: i64,
+    #[serde(rename = "total_tokens")]
+    pub total_tokens: i64,
+    #[serde(rename = "prompt_tokens_details")]
+    pub prompt_tokens_details: PromptTokensDetails,
+    #[serde(rename = "completion_tokens_details")]
+    pub completion_tokens_details: CompletionTokensDetails,
+}
+
+#[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PromptTokensDetails {
+    #[serde(rename = "cached_tokens")]
+    pub cached_tokens: i64,
+    #[serde(rename = "audio_tokens")]
+    pub audio_tokens: i64,
+}
+
+#[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CompletionTokensDetails {
+    #[serde(rename = "reasoning_tokens")]
+    pub reasoning_tokens: i64,
+    #[serde(rename = "audio_tokens")]
+    pub audio_tokens: i64,
+    #[serde(rename = "accepted_prediction_tokens")]
+    pub accepted_prediction_tokens: i64,
+    #[serde(rename = "rejected_prediction_tokens")]
+    pub rejected_prediction_tokens: i64,
+}
+
+#[allow(unused)]
+#[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RequestSchema {
+    pub model: String,
+    pub messages: Vec<RequestMessage>,
+    pub temperature: f64,
+}
+
+#[allow(unused)]
+#[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RequestMessage {
+    pub role: String,
+    pub content: String,
+}
 
 pub trait LlmInterface {
     async fn run(prompt: String) -> Result<String, Box<dyn std::error::Error>>;
 }
 
-pub struct Llm {}
+pub trait LlmInterfaceOpenApi {
+    async fn run(
+        prompt: String,
+        url: String,
+        token: String,
+        model: String,
+    ) -> Result<String, Box<dyn std::error::Error>>;
+}
 
-impl LlmInterface for Llm {
+pub struct LlmClaude {}
+pub struct LlmOpenApi {}
+
+impl LlmInterface for LlmClaude {
     async fn run(prompt: String) -> Result<String, Box<dyn std::error::Error>> {
-        log::debug!("[run] executing llm inference endpoint");
+        log::debug!("[run] executing llm claude inference endpoint");
         let start = Instant::now();
 
         let output = Command::new("claude")
@@ -31,5 +136,73 @@ impl LlmInterface for Llm {
         }
 
         Ok(stdout)
+    }
+}
+
+impl LlmInterfaceOpenApi for LlmOpenApi {
+    async fn run(
+        prompt: String,
+        url: String,
+        token: String,
+        model: String,
+    ) -> Result<String, Box<dyn std::error::Error>> {
+        log::debug!("[run] executing llm openapi inference endpoint");
+        let start = Instant::now();
+
+        let elapsed = start.elapsed();
+        log::info!("completed task in {:?}", elapsed);
+
+        let system_msg = RequestMessage {
+            role: "user".to_string(),
+            content: "you are a cuda kernel expert, help the user with generating code, analyzing and profiling of cuda kernels".to_string(),
+        };
+        let user_msg = RequestMessage {
+            role: "user".to_owned(),
+            content: prompt,
+        };
+        let vec_msgs = vec![system_msg, user_msg];
+        let rs = RequestSchema {
+            model,
+            temperature: 0.1,
+            messages: vec_msgs,
+        };
+        let json_request = serde_json::to_string(&rs)?;
+
+        let client = Client::builder()
+            .danger_accept_invalid_certs(true)
+            .timeout(Duration::new(1200, 0))
+            .build()?;
+
+        let client_response = client
+            .post(url)
+            .bearer_auth(token)
+            .header("Content-Type", "application/json")
+            .body(json_request)
+            .send()
+            .await?;
+
+        log::debug!("[process_post_call] status {}", client_response.status());
+        if client_response.status() != StatusCode::OK {
+            let response = client_response.bytes().await?;
+            let result = String::from_utf8(response.to_vec())?;
+            return Err(Box::from(result));
+        }
+        let response = client_response.bytes().await?;
+        let chat_response: OpenaiChatCompletions = serde_json::from_slice(&response)?;
+
+        log::debug!(
+            "[process_post_call] prompt tokens {}",
+            chat_response.usage.prompt_tokens
+        );
+        log::debug!(
+            "[process_post_call] completion tokens {}",
+            chat_response.usage.completion_tokens
+        );
+        log::debug!(
+            "[process_post_call] total tokens {}",
+            chat_response.usage.total_tokens
+        );
+
+        Ok(chat_response.choices[0].message.content.clone())
     }
 }

@@ -123,7 +123,7 @@ pub fn find_most_performant_kernel(base_dir: String) -> Result<(), Box<dyn std::
         }
     }
     let vec_parts: Vec<&str> = kernel_path.split("/").collect();
-    let updated_path = format!("{}", vec_parts[..vec_parts.len() - 1].join("/"));
+    let updated_path = vec_parts[..vec_parts.len() - 1].join("/").to_string();
     let (kernel_name, kernel_contents) = find_cuda_file(updated_path.clone(), &mut false)?;
     log::info!(
         "[find_most_performant_kernel] found kernel {} in path {} with reward {}",

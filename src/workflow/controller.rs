@@ -687,10 +687,9 @@ mod tests {
         let re = Regex::new("[_]{2}global[_]{2}[\\svoid\\s]+([a-zA-Z0-9_]*)")?;
         let re_simple = Regex::new("([a-zA-Z0-9_]+)")?;
         let mut kernel_name;
-        let mut count = 0;
-        for line in vec_lines.iter() {
+        for (count, line) in vec_lines.iter().enumerate() {
             if line.contains("__global__ void") && !line.contains("__launch_bounds__") {
-                for cap in re.captures_iter(&line) {
+                for cap in re.captures_iter(line) {
                     kernel_name = cap[1].to_string();
                     println!("[run] profiling kernel {}", kernel_name);
                 }
@@ -698,7 +697,7 @@ mod tests {
             if line.contains("__global__ void __launch_bounds__")
                 | line.contains("__global__ __launch_bounds__")
             {
-                for cap in re_simple.captures_iter(&vec_lines[count + 1]) {
+                for cap in re_simple.captures_iter(vec_lines[count + 1]) {
                     if !cap[1].to_string().contains("void") {
                         kernel_name = cap[1].to_string();
                         println!(
@@ -708,7 +707,6 @@ mod tests {
                     }
                 }
             }
-            count += 1;
         }
 
         let vec_trajectories = get_trajectories(format!(

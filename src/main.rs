@@ -57,13 +57,37 @@ fn main() {
     // setup logging
     if let Err(e) = log::Logging::new().with_level(level).init() {
         // log is broken so use eprintln!
-        // no use continuing
+        // o use continuing
         eprintln!("[main] error {}", e);
         std::process::exit(1);
     }
 
     let (sub_command, parameters) = match &args.command {
-        Some(Commands::Llm {}) => ("llm".to_string(), parameters.clone()),
+        Some(Commands::Llm {}) => {
+            // parameters used in service
+            let mut hm: HashMap<String, String> = HashMap::new();
+            match parameters.llm_model.as_str() {
+                x if !x.contains("opus") => match parameters.openapi_url {
+                    Some(ref openapi_url) => {
+                        hm.insert("model".to_string(), parameters.llm_model.clone());
+                        hm.insert("openapi_url".to_string(), openapi_url.to_owned());
+                        hm.insert(
+                            "token".to_string(),
+                            parameters.token.clone().unwrap_or("".to_string()),
+                        );
+                        *MAP_LOOKUP.lock().unwrap() = Some(hm.clone());
+                    }
+                    None => {
+                        log::error!(
+                            "[main] the field openapi_url is mandatory when noting using claude"
+                        );
+                        std::process::exit(1);
+                    }
+                },
+                _ => {}
+            }
+            ("llm".to_string(), parameters)
+        }
         Some(Commands::Gpu {}) => {
             // check for cuda in PATH and LD_LIBRARY_PATH envars
             match env::var("PATH") {
