@@ -325,7 +325,7 @@ impl ControllerInterface for Controller {
                     current_trajectory,
                     step + 1
                 );
-                if step < parameters.max_rollout - 1 {
+                if step <= parameters.max_rollout - 1 {
                     let res = fs::create_dir_all(next_target_dir.clone());
                     match res {
                         Ok(_) => {
@@ -674,12 +674,13 @@ mod tests {
             );
         }
 
-        let base_dir = format!(
-            "{}/logs/{}/{}/rl-ncu/trajectory_1_mINMOfqW/step_3",
-            parameters.working_dir, model, item
-        );
         // uncomment to test
         // NB this deletes the prompt file so use with caution
+
+        // let base_dir = format!(
+        //    "{}/logs/{}/{}/rl-ncu/trajectory_xxx/step_3",
+        //    parameters.working_dir, model, item
+        //);
         // let (cuda_file, _cuda_kernel) = find_cuda_file(base_dir, &mut true)?;
         // println!("fallback {}", cuda_file);
 
