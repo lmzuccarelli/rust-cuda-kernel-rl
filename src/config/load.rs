@@ -11,7 +11,7 @@ pub struct Parameters {
     pub workflow_batch: Vec<String>,
     pub working_dir: String,
     pub llm_model: String,
-    pub token: Option<String>,
+    pub token_file: Option<String>,
     pub openapi_url: Option<String>,
     pub gpu_arch: u8,
     pub max_rollout: u8,

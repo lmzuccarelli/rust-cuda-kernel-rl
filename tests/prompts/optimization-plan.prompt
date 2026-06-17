@@ -1,0 +1,436 @@
+You are a world-class GPU optimisation expert.  Based on the kernel implementation and the qualitative state analysis below, choose the **{top_n}** optimisation techniques that are most likely to improve performance.  
+From the list of AVAILABLE OPTIMISATIONS pick only those with the highest relevance to the observed performance characteristics **and** the specific code patterns you see.
+
+For *each* chosen technique provide a concise explanation *why* it is relevant and *how* it should be applied to the given code.
+Also assign a numerical RELEVANCE_SCORE between 0.0 (not relevant) and 1.0 (perfect match).
+
+Return your answer as **valid JSON** in the EXACT format (no extra keys, no comments, do not wrap the JSON in markdown fences):
+
+[
+  {{
+    "technique": "<name>",
+    "relevance_score": <float 0-1>,
+    "description": "<explain what the optimisation does and *why* it applies to the current code>"
+  }},
+  ... (exactly {top_n} entries)
+]
+
+Besides the available optimisation techniques in Performance State Categories, you should always consider using the following techniques: 
+
+- For memory bandwidth bound, or compute bandwidth bound kernels: prioritize using **SIMD_operations**: Use packed SIMD datatypes such as half2
+- For compute bandwidth bound and compute throughput bound kernels: prioritize using **tensor_core_utilization**: Use tensor core library such as wmma when there exist a tensor cores (sm_70+) in the target GPU archecture. 
+
+----------------------- CURRENT KERNEL CONTEXT -----------------------
+STATE ANALYSIS RESPONSE:
+PERFORMANCE_SIGNATURE: This WMMA-based GEMM kernel is memory-bound, dominated by severe shared memory bank conflicts (50% excessive wavefronts) and uncoalesced global memory accesses (33% excessive sectors), which starve the tensor core pipeline. The tensor units achieve only ~40% utilization despite being the highest-utilized pipeline, because schedulers find eligible warps only 30% of cycles — warps spend nearly half their stall time (45.8% of 19.3 cycles/instruction) blocked waiting on oversubscribed memory pipes rather than lacking data.
+
+RELATIVE_PATTERNS:
+- memory_pressure: high
+- compute_utilization: moderate
+- access_patterns: very_poor
+- cache_efficiency: moderate
+- occupancy_level: moderate
+- parallelism_utilization: low
+- specialized_hw_usage: moderate
+- Shared memory bank conflicts are the single largest inefficiency — the swizzle scheme (`c_swizzle` and padding strategy) fails to eliminate conflicts during both WMMA fragment loads and the C-tile writeback stage, producing 50% excessive wavefronts with an estimated 48.5% speedup opportunity
+- Global memory coalescing is poor at the C output store path — the half2 writeback pattern and boundary-handling fallback path generate 33% excessive sectors, suggesting misaligned or strided stores to DRAM
+- L1/TEX cache hit rate is negligible (1%) which is expected for an async-copy pipeline bypassing L1, but L2 hit rate of 76.5% indicates reasonable tile reuse at the L2 level for the 3-stage prefetch window
+- Occupancy is co-limited by both register pressure (78 regs/thread) and shared memory (25.3 KB dynamic + config), capping at 3 blocks/SM and 50% theoretical — achieved occupancy tracks closely at 47.6%, so occupancy itself is not the primary issue but compounds the latency-hiding deficit
+- Warp scheduling is severely underutilized with only 0.52 eligible warps per scheduler per cycle out of 5.71 active, meaning most active warps are stalled on memory operations rather than ready to issue
+
+PRIMARY_BOTTLENECK: memory_bound
+
+//code signature: multi-stage async-copy GEMM loop with WMMA tensor core accumulation / branch-divergent boundary tile writeback path
+
+CONTEXT_DESCRIPTION: This is a 3-stage software-pipelined WMMA GEMM kernel (BM=128, BN=64, BK=16) targeting Ampere (CC 8.6) with cp.async global-to-shared loads and 16x16x16 tensor core fragments. The kernel's primary optimization opportunity lies in fixing shared memory access patterns — the A_PAD/B_PAD padding and c_swizzle scheme are insufficient to prevent bank conflicts during fragment loads and accumulator writeback, which alone could yield ~48% speedup. Secondary gains come from improving global store coalescing in the C output path, where the current half2 store pattern and the scalar fallback for boundary tiles produce significant excess traffic. The 78-register footprint and 25 KB shared memory allocation jointly limit occupancy to 50%, but addressing the access pattern inefficiencies would likely yield more benefit than reducing occupancy limiters, since the root cause of low scheduler utilization is memory stalls rather than insufficient parallelism.
+
+CODE IMPLEMENTATION:
+```cpp
+#include <cuda_fp16.h>
+#include <cuda_runtime.h>
+#include <mma.h>
+#include <stdint.h>
+#include <algorithm>
+
+using namespace nvcuda;
+
+#define BM 128
+#define BN 64
+#define BK 16
+#define WMMA_TILE_M 16
+#define WMMA_TILE_N 16
+#define WMMA_TILE_K 16
+
+#define BLOCK_SIZE 256
+#define NUM_WARPS (BLOCK_SIZE / 32)
+#define WARPS_M 4
+#define WARPS_N 2
+#define WM (BM / WARPS_M)
+#define WN (BN / WARPS_N)
+#define WARP_M_TILES (WM / WMMA_TILE_M)
+#define WARP_N_TILES (WN / WMMA_TILE_N)
+#define CHUNK_K_CNT (BK / WMMA_TILE_K)
+
+#define A_PAD 8
+#define B_PAD 8
+#define A_STRIDE (BK + A_PAD)
+#define B_STRIDE (BN + B_PAD)
+
+#define K_STAGE 3
+
+#define A_STAGE_ELEMS (BM * A_STRIDE)
+#define B_STAGE_ELEMS (BK * B_STRIDE)
+#define SMEM_ELEMS ((A_STAGE_ELEMS + B_STAGE_ELEMS) * K_STAGE)
+
+#define A_TOTAL_COPIES (BM * (BK / 8))
+#define B_TOTAL_COPIES (BK * (BN / 8))
+
+#define C_STAGE_STRIDE 20
+
+__device__ __forceinline__ int c_swizzle(int row, int col) {
+    return col ^ (row & 7);
+}
+
+inline __device__ __host__ size_t div_ceil(size_t a, size_t b) {
+    return (a + b - 1) / b;
+}
+
+__device__ __forceinline__ void async_load_A(
+    half *smem_A, const half *__restrict__ A,
+    int stage, size_t k_base, size_t block_m,
+    size_t M, size_t K, int tid)
+{
+    if (tid < A_TOTAL_COPIES) {
+        int copies_per_row = BK / 8;
+        int row = tid / copies_per_row;
+        int col = (tid % copies_per_row) * 8;
+
+        size_t gr = block_m + row;
+        size_t gc = k_base + col;
+
+        uint32_t dst = __cvta_generic_to_shared(
+            &smem_A[stage * A_STAGE_ELEMS + row * A_STRIDE + col]);
+
+        bool ok = (gr < M) && (gc + 8 <= K);
+        const half *src = ok ? &A[gr * K + gc] : A;
+
+        asm volatile(
+            "cp.async.cg.shared.global [%0], [%1], %2, %3;\n"
+            :: "r"(dst), "l"(src), "n"(16), "r"(ok ? 16 : 0));
+    }
+}
+
+__device__ __forceinline__ void async_load_B(
+    half *smem_B, const half *__restrict__ B,
+    int stage, size_t k_base, size_t block_n,
+    size_t K, size_t N, int tid)
+{
+    if (tid < B_TOTAL_COPIES) {
+        int copies_per_row = BN / 8;
+        int row = tid / copies_per_row;
+        int col = (tid % copies_per_row) * 8;
+
+        size_t gr = k_base + row;
+        size_t gc = block_n + col;
+
+        uint32_t dst = __cvta_generic_to_shared(
+            &smem_B[stage * B_STAGE_ELEMS + row * B_STRIDE + col]);
+
+        bool ok = (gr < K) && (gc + 8 <= N);
+        const half *src = ok ? &B[gr * N + gc] : B;
+
+        asm volatile(
+            "cp.async.cg.shared.global [%0], [%1], %2, %3;\n"
+            :: "r"(dst), "l"(src), "n"(16), "r"(ok ? 16 : 0));
+    }
+}
+
+__global__ __launch_bounds__(BLOCK_SIZE, 3)
+void mmaAsyncStage4Kernel(
+    const half *__restrict__ A,
+    const half *__restrict__ B,
+    half *__restrict__ C,
+    size_t M, size_t N, size_t K)
+{
+    extern __shared__ half smem[];
+    half *smem_A = smem;
+    half *smem_B = smem + A_STAGE_ELEMS * K_STAGE;
+
+    const int tid = threadIdx.x;
+    const int warp_id = tid / 32;
+    const int lane_id = tid % 32;
+
+    const int warp_m = warp_id / WARPS_N;
+    const int warp_n = warp_id % WARPS_N;
+
+    const size_t block_m = (size_t)blockIdx.y * BM;
+    const size_t block_n = (size_t)blockIdx.x * BN;
+
+    const int num_k_tiles = (int)div_ceil(K, (size_t)BK);
+
+    wmma::fragment<wmma::accumulator, WMMA_TILE_M, WMMA_TILE_N, WMMA_TILE_K, float>
+        c_frag[WARP_M_TILES][WARP_N_TILES];
+
+    #pragma unroll
+    for (int i = 0; i < WARP_M_TILES; i++)
+        #pragma unroll
+        for (int j = 0; j < WARP_N_TILES; j++)
+            wmma::fill_fragment(c_frag[i][j], 0.0f);
+
+    #pragma unroll
+    for (int s = 0; s < K_STAGE - 1; s++) {
+        if (s < num_k_tiles) {
+            size_t kb = (size_t)s * BK;
+            async_load_A(smem_A, A, s, kb, block_m, M, K, tid);
+            async_load_B(smem_B, B, s, kb, block_n, K, N, tid);
+        }
+        asm volatile("cp.async.commit_group;\n" ::);
+    }
+
+    int rd = 0;
+    int wr = K_STAGE - 1;
+
+    for (int kt = 0; kt < num_k_tiles; kt++) {
+        asm volatile("cp.async.wait_group %0;\n" :: "n"(K_STAGE - 2));
+        __syncthreads();
+
+        int nk = kt + K_STAGE - 1;
+        if (nk < num_k_tiles) {
+            size_t kb = (size_t)nk * BK;
+            async_load_A(smem_A, A, wr, kb, block_m, M, K, tid);
+            async_load_B(smem_B, B, wr, kb, block_n, K, N, tid);
+        }
+        asm volatile("cp.async.commit_group;\n" ::);
+
+        #pragma unroll
+        for (int kk = 0; kk < CHUNK_K_CNT; kk++) {
+            wmma::fragment<wmma::matrix_a, WMMA_TILE_M, WMMA_TILE_N, WMMA_TILE_K,
+                           half, wmma::row_major> a_frag[WARP_M_TILES];
+            wmma::fragment<wmma::matrix_b, WMMA_TILE_M, WMMA_TILE_N, WMMA_TILE_K,
+                           half, wmma::row_major> b_frag[WARP_N_TILES];
+
+            #pragma unroll
+            for (int m = 0; m < WARP_M_TILES; m++) {
+                int sr = warp_m * WM + m * WMMA_TILE_M;
+                int sc = kk * WMMA_TILE_K;
+                wmma::load_matrix_sync(a_frag[m],
+                    &smem_A[rd * A_STAGE_ELEMS + sr * A_STRIDE + sc],
+                    A_STRIDE);
+            }
+
+            #pragma unroll
+            for (int n = 0; n < WARP_N_TILES; n++) {
+                int sk = kk * WMMA_TILE_K;
+                int sn = warp_n * WN + n * WMMA_TILE_N;
+                wmma::load_matrix_sync(b_frag[n],
+                    &smem_B[rd * B_STAGE_ELEMS + sk * B_STRIDE + sn],
+                    B_STRIDE);
+            }
+
+            #pragma unroll
+            for (int m = 0; m < WARP_M_TILES; m++)
+                #pragma unroll
+                for (int n = 0; n < WARP_N_TILES; n++)
+                    wmma::mma_sync(c_frag[m][n], a_frag[m], b_frag[n], c_frag[m][n]);
+        }
+
+        rd = (rd + 1) % K_STAGE;
+        wr = (wr + 1) % K_STAGE;
+    }
+
+    asm volatile("cp.async.wait_group 0;\n" ::);
+    __syncthreads();
+
+    float *c_stage = (float *)smem;
+
+    const int groupID = lane_id % 4;
+    const int tid_in_grp = lane_id / 4;
+
+    #pragma unroll
+    for (int m = 0; m < WARP_M_TILES; m++) {
+        #pragma unroll
+        for (int n = 0; n < WARP_N_TILES; n++) {
+            size_t cr = block_m + warp_m * WM + m * WMMA_TILE_M;
+            size_t cc = block_n + warp_n * WN + n * WMMA_TILE_N;
+
+            if (cr >= M || cc >= N) continue;
+
+            float *wbuf = &c_stage[warp_id * WMMA_TILE_M * C_STAGE_STRIDE];
+
+            #pragma unroll
+            for (int fi = 0; fi < 8; fi++) {
+                int frag_row = tid_in_grp + ((fi & 2) ? 8 : 0);
+                int frag_col = groupID * 2 + (fi & 1) + ((fi & 4) ? 8 : 0);
+                int sc = c_swizzle(frag_row, frag_col);
+                wbuf[frag_row * C_STAGE_STRIDE + sc] = c_frag[m][n].x[fi];
+            }
+            __syncwarp();
+
+            bool full = (cr + WMMA_TILE_M <= M) && (cc + WMMA_TILE_N <= N);
+
+            if (full) {
+                int h2_col = lane_id % 8;
+                int row_off = lane_id / 8;
+                #pragma unroll
+                for (int iter = 0; iter < 4; iter++) {
+                    int r = iter * 4 + row_off;
+                    int c = h2_col * 2;
+                    int sc0 = c_swizzle(r, c);
+                    int sc1 = c_swizzle(r, c + 1);
+                    half h0 = __float2half_rn(wbuf[r * C_STAGE_STRIDE + sc0]);
+                    half h1 = __float2half_rn(wbuf[r * C_STAGE_STRIDE + sc1]);
+                    half2 val = __halves2half2(h0, h1);
+                    *reinterpret_cast<half2*>(&C[(cr + r) * N + cc + c]) = val;
+                }
+            } else {
+                int col_id = lane_id % 16;
+                int row_off = lane_id / 16;
+                #pragma unroll
+                for (int iter = 0; iter < 8; iter++) {
+                    int r = iter * 2 + row_off;
+                    int c = col_id;
+                    int sc = c_swizzle(r, c);
+                    if (cr + r < M && cc + c < N) {
+                        C[(cr + r) * N + cc + c] = __float2half_rn(wbuf[r * C_STAGE_STRIDE + sc]);
+                    }
+                }
+            }
+            __syncwarp();
+        }
+    }
+}
+
+size_t get_smem_max_size(size_t N) {
+    return SMEM_ELEMS * sizeof(half);
+}
+
+void launch_gpu_implementation(
+    void* output, void* A, void* B, int64_t N)
+{
+    size_t smem_size = SMEM_ELEMS * sizeof(half);
+
+    cudaFuncSetAttribute(mmaAsyncStage4Kernel,
+        cudaFuncAttributeMaxDynamicSharedMemorySize, (int)smem_size);
+
+    dim3 block(BLOCK_SIZE);
+    dim3 grid((unsigned int)div_ceil(N, BN),
+              (unsigned int)div_ceil(N, BM));
+
+    mmaAsyncStage4Kernel<<<grid, block, smem_size>>>(
+        static_cast<const half*>(A),
+        static_cast<const half*>(B),
+        static_cast<half*>(output),
+        (size_t)N, (size_t)N, (size_t)N);
+
+    cudaDeviceSynchronize();
+}
+```
+
+----------------------- AVAILABLE OPTIMISATIONS ----------------------
+STATE: high_level_inefficiency
+  - algorithmic_changes (pred 1.00x | conf 0.5): Replace the current algorithm with a more efficient approach
+  - dynamic_programming (pred 1.00x | conf 0.5): Utilize memory to avoid redundant computation
+  - data_structure_optimizations (pred 1.00x | conf 0.5): Change underlying data structures/representations
+
+STATE: memory_bandwidth_saturated
+  - vectorized_memory_access (pred 1.00x | conf 0.5): Use float4/int4/half2 for wider transactions
+  - memory_coalescing_optimization (pred 1.00x | conf 0.5): Align access patterns to cache lines
+  - shared_memory_tiling (pred 1.00x | conf 0.5): Cache frequently accessed data on-chip
+  - data_layout_transformation (pred 1.00x | conf 0.5): Convert AoS to SoA layouts
+  - compression_techniques (pred 1.00x | conf 0.5): Use mixed precision (FP16) to halve bandwidth
+
+STATE: memory_latency_bound
+  - shared_memory_blocking (pred 1.00x | conf 0.5): Tile data to fit in shared memory
+  - register_blocking (pred 1.00x | conf 0.5): Keep frequently used data in registers
+  - prefetching_strategies (pred 1.00x | conf 0.5): Software prefetching for predictable patterns
+  - cache_aware_algorithms (pred 1.00x | conf 0.5): Restructure for better locality
+  - texture_memory_usage (pred 1.00x | conf 0.5): Use texture cache for read-only data
+
+STATE: memory_bank_conflicts
+  - bank_conflict_padding (pred 1.00x | conf 0.5): Add padding to shared memory arrays
+  - access_pattern_swizzling (pred 1.00x | conf 0.5): Use XOR patterns to distribute accesses
+  - broadcast_optimization (pred 1.00x | conf 0.5): Structure for broadcast reads when possible
+  - memory_layout_permutation (pred 1.00x | conf 0.5): Reorder data to avoid conflicts
+
+STATE: cache_inefficient
+  - cache_blocking_algorithms (pred 1.00x | conf 0.5): Structure working sets for cache sizes
+  - temporal_locality_optimization (pred 1.00x | conf 0.5): Reorder computations for reuse
+  - l2_cache_persistence (pred 1.00x | conf 0.5): Mark critical data for L2 retention
+  - read_only_cache_optimization (pred 1.00x | conf 0.5): Use __ldg() for read-only data
+
+STATE: compute_throughput_saturated
+  - tensor_core_utilization (pred 1.00x | conf 0.5): Use Tensor Cores for matrix operations
+  - instruction_level_parallelism (pred 1.00x | conf 0.5): Unroll loops and reorder operations
+  - fast_math_optimization (pred 1.00x | conf 0.5): Use fast math flags and intrinsics
+  - specialized_instruction_usage (pred 1.00x | conf 0.5): Use GPU-specific intrinsics
+  - vectorized_operations (pred 1.00x | conf 0.5): Use vector data types and operations
+  - SIMD_operations (pred 1.00x | conf 0.5): Use packed SIMD datatypes such as half2
+
+STATE: instruction_mix_suboptimal
+  - instruction_scheduling_optimization (pred 1.00x | conf 0.5): Reorder for better pipeline usage
+  - functional_unit_balancing (pred 1.00x | conf 0.5): Balance load across different units
+  - loop_fusion_optimization (pred 1.00x | conf 0.5): Combine kernels to balance instruction mix
+  - mathematical_transformation (pred 1.00x | conf 0.5): Adjust operators to solve the problem in a different way
+
+STATE: thread_divergence_high
+  - predicated_execution (pred 1.00x | conf 0.5): Replace branches with conditional arithmetic
+  - branch_reduction_techniques (pred 1.00x | conf 0.5): Use lookup tables and bit manipulation
+  - warp_level_primitives (pred 1.00x | conf 0.5): Use shuffle and vote functions
+  - stream_compaction (pred 1.00x | conf 0.5): Filter and compact data to reduce divergence
+  - work_distribution_optimization (pred 1.00x | conf 0.5): Sort data to group similar work
+
+STATE: low_occupancy_register_pressure
+  - register_pressure_reduction (pred 1.00x | conf 0.5): Reduce variable scope and reuse
+  - variable_scoping_optimization (pred 1.00x | conf 0.5): Limit variable lifetimes
+  - spill_elimination (pred 1.00x | conf 0.5): Restructure to avoid local memory usage
+  - launch_bounds_tuning (pred 1.00x | conf 0.5): Use __launch_bounds__ to control registers
+  - algorithmic_register_reduction (pred 1.00x | conf 0.5): Change algorithm to use fewer registers
+
+STATE: low_occupancy_shared_memory
+  - shared_memory_optimization (pred 1.00x | conf 0.5): Reduce per-block shared memory usage
+  - dynamic_shared_memory (pred 1.00x | conf 0.5): Use dynamic allocation for flexibility
+  - shared_memory_reuse (pred 1.00x | conf 0.5): Reuse buffers for multiple phases
+  - block_size_adaptation (pred 1.00x | conf 0.5): Adjust block size to optimize occupancy
+
+STATE: insufficient_parallelism
+  - work_per_thread_increase (pred 1.00x | conf 0.5): Assign more work to each thread
+  - thread_coarsening (pred 1.00x | conf 0.5): Process multiple elements per thread
+  - persistent_kernel_pattern (pred 1.00x | conf 0.5): Use long-running kernels with work queues
+  - grid_size_optimization (pred 1.00x | conf 0.5): Ensure sufficient blocks for latency hiding
+  - cooperative_groups (pred 1.00x | conf 0.5): Use grid-wide synchronization
+
+STATE: hybrid_bound
+  - memory_compute_overlap (pred 1.00x | conf 0.5): Pipeline memory and compute operations to hide latency
+  - adaptive_block_sizing (pred 1.00x | conf 0.5): Adjust thread-block sizes dynamically to balance resource usage
+  - algorithmic_optimization (pred 1.00x | conf 0.5): Restructure algorithms for better memory-compute balance
+  - fused_operations (pred 1.00x | conf 0.5): Fuse memory-bound and compute-bound kernels to reduce intermediate traffic
+  - SIMD_operations (pred 1.00x | conf 0.5): Use packed SIMD datatypes (e.g., half2) to improve both bandwidth and compute throughput
+
+STATE: memory_compute_balanced
+  - memory_compute_overlap (pred 1.00x | conf 0.5): Pipeline memory and compute operations
+  - adaptive_tiling (pred 1.00x | conf 0.5): Dynamically adjust tile sizes for balance
+  - fused_operations (pred 1.00x | conf 0.5): Combine memory-bound and compute-bound kernels
+  - algorithmic_rebalancing (pred 1.00x | conf 0.5): Choose algorithms that balance both aspects
+
+STATE: latency_memory_bound
+  - occupancy_memory_codesign (pred 1.00x | conf 0.5): Jointly optimize occupancy and memory
+  - hierarchical_tiling (pred 1.00x | conf 0.5): Multi-level tiling for both occupancy and locality
+  - resource_balanced_design (pred 1.00x | conf 0.5): Balance all resource constraints
+  - workload_restructuring (pred 1.00x | conf 0.5): Fundamental algorithm changes
+
+STATE: api_overhead_dominant
+  - kernel_fusion (pred 1.00x | conf 0.5): Combine multiple small kernels
+  - cuda_graphs (pred 1.00x | conf 0.5): Use graphs to batch operations
+  - persistent_kernels (pred 1.00x | conf 0.5): Long-running kernels with internal queues
+  - asynchronous_execution (pred 1.00x | conf 0.5): Overlap with streams
+  - dynamic_parallelism (pred 1.00x | conf 0.5): Launch child kernels from GPU
+
+STATE: transfer_bandwidth_limited
+  - transfer_optimization (pred 1.00x | conf 0.5): Use pinned memory and async transfers
+  - data_compression (pred 1.00x | conf 0.5): Compress data before transfer
+  - zero_copy_memory (pred 1.00x | conf 0.5): Direct GPU access to host memory
+  - unified_memory_optimization (pred 1.00x | conf 0.5): Use managed memory with hints
+  - pipeline_parallelism (pred 1.00x | conf 0.5): Overlap transfers with computation
+
+
+

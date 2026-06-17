@@ -300,7 +300,7 @@ impl ControllerInterface for Controller {
             );
             let trajectories = get_trajectories(trajectories_dir.clone())?;
             log::debug!("[execute_agent_flow] trajectories {:#?}", trajectories);
-            let current_trajectory = "trajectory_7_tOB3UgeG";
+            let current_trajectory = "trajectory_9_gGktFtre";
             log::info!("[execute_agent_flow] trajectory   : {}", current_trajectory);
             let &mut mut fallback = &mut false;
             let mut plan_count = parameters.max_rollout - 1;
@@ -436,7 +436,7 @@ impl ControllerInterface for Controller {
                 contents.push_str(&format!("reward                  : {}\n", reward));
                 fs::write(format!("{}/stats.txt", local_target_dir), contents)?;
                 if perc < -100.0 {
-                    log::error!("[execute_agent_flow] reward degradation is too severe");
+                    log::error!("[execute_agent_flow] degradation is too severe");
                     fallback = true;
                     continue;
                 }
@@ -448,7 +448,7 @@ impl ControllerInterface for Controller {
                 let state_prompt =
                     get_profile_prompt(code.clone(), ncu_report.clone()).replace("\n", "");
                 // call the llm endpoint
-                let url = format!("{}/v1/prompt", parameters.llm_server_url);
+                let url = format!("{}/v1/prompt/claude", parameters.llm_server_url);
                 let file_name = format!("{}/llm_state_response.txt", local_target_dir);
                 let state_res = process_post_call(Some(file_name), url, state_prompt).await;
                 let state = match state_res {
@@ -470,7 +470,7 @@ impl ControllerInterface for Controller {
                     get_optimization_plan(plan_count, state.clone(), code.clone(), avail_opt);
                 // call llm for optimization plan
                 log::info!("[execute_agent_flow] calling llm (optimization plan)");
-                let url = format!("{}/v1/prompt", parameters.llm_server_url);
+                let url = format!("{}/v1/prompt/claude", parameters.llm_server_url);
                 let file_name = format!("{}/optimization-plan.json", local_target_dir);
                 let json_plan_res = process_post_call(Some(file_name), url, prompt_op).await;
                 let json_plan = match json_plan_res {
@@ -555,7 +555,7 @@ impl ControllerInterface for Controller {
                 };
 
                 log::info!("[execute_agent_flow] calling llm (task generate code)");
-                let url = format!("{}/v1/prompt", parameters.llm_server_url);
+                let url = format!("{}/v1/prompt/claude", parameters.llm_server_url);
                 let file_name = format!("{}/{}_llm_response.txt", next_target_dir, plan.technique);
                 let contents_res = process_post_call(Some(file_name), url, task_prompt).await;
                 match contents_res {
@@ -676,10 +676,11 @@ mod tests {
         }
 
         let base_dir = format!(
-            "{}/logs/{}/{}/rl-ncu/trajectory_1_mINMOfqW/step_0",
+            "{}/logs/{}/{}/rl-ncu/trajectory_1_mINMOfqW/step_3",
             parameters.working_dir, model, item
         );
-        let (_cuda_file, _cuda_kernel) = find_cuda_file(base_dir, &mut false)?;
+        let (cuda_file, _cuda_kernel) = find_cuda_file(base_dir, &mut true)?;
+        println!("fallback {}", cuda_file);
 
         //let cuda_kernel = fs::read_to_string("tests/tensor_core_utilization.cu")?;
         let cuda_kernel = fs::read_to_string("tests/memory_compute_overlap.cu")?;

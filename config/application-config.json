@@ -9,8 +9,10 @@
   ],
   "working_dir": "/home/lzuccarelli/Projects/rust-cuda-kernel-rl",
   "llm_model": "opus-4-6",
+  "openapi_url": "https://api.cerebras.ai/v1/chat/completions",
+  "token_file": "/home/lzuccarelli/.cerebras/token",
   "max_rollout": 10,
-  "rollout_start": 0,
+  "rollout_start": 6,
   "flow_control": 0,
   "gpu_arch": 86
 }

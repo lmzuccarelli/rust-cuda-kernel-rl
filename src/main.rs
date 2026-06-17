@@ -12,6 +12,7 @@ use hyper_util::rt::TokioIo;
 use mimalloc::MiMalloc;
 use std::collections::HashMap;
 use std::env;
+use std::fs;
 use std::net::{Ipv4Addr, SocketAddr};
 use std::sync::Mutex;
 use tokio::net::TcpListener;
@@ -57,7 +58,7 @@ fn main() {
     // setup logging
     if let Err(e) = log::Logging::new().with_level(level).init() {
         // log is broken so use eprintln!
-        // o use continuing
+        // no use continuing
         eprintln!("[main] error {}", e);
         std::process::exit(1);
     }
@@ -71,20 +72,34 @@ fn main() {
                     Some(ref openapi_url) => {
                         hm.insert("model".to_string(), parameters.llm_model.clone());
                         hm.insert("openapi_url".to_string(), openapi_url.to_owned());
-                        hm.insert(
-                            "token".to_string(),
-                            parameters.token.clone().unwrap_or("".to_string()),
-                        );
-                        *MAP_LOOKUP.lock().unwrap() = Some(hm.clone());
                     }
                     None => {
                         log::error!(
-                            "[main] the field openapi_url is mandatory when noting using claude"
+                            "[main] the field openapi_url is mandatory when not using claude"
                         );
                         std::process::exit(1);
                     }
                 },
                 _ => {}
+            }
+            match parameters.token_file {
+                Some(ref tf) => {
+                    let token_res = fs::read_to_string(tf);
+                    match token_res {
+                        Ok(token) => {
+                            hm.insert("token".to_string(), token);
+                        }
+                        Err(e) => {
+                            log::error!("[main] reading token file {}", e);
+                            std::process::exit(1);
+                        }
+                    }
+                    *MAP_LOOKUP.lock().unwrap() = Some(hm.clone());
+                }
+                None => {
+                    log::error!("[main] the field token_file is mandatory when not using claude");
+                    std::process::exit(1);
+                }
             }
             ("llm".to_string(), parameters)
         }

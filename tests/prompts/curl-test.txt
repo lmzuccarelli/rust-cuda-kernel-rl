@@ -1,0 +1,13 @@
+ curl -v --location 'https://api.cerebras.ai/v1/chat/completions' --header 'Content-Type: application/json' --header "Authorization: Bearer xxx" --data '{
+        "model": "gpt-oss-120b",
+        "stream": true,
+        "max_tokens": 20000,
+        "temperature": 0.2,
+        "top_p": 0.8,
+        "messages": [
+            {
+                "role": "user",
+                "content": "what is a qubit?"
+            }
+        ]
+    }'
