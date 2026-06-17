@@ -300,7 +300,7 @@ impl ControllerInterface for Controller {
             );
             let trajectories = get_trajectories(trajectories_dir.clone())?;
             log::debug!("[execute_agent_flow] trajectories {:#?}", trajectories);
-            let current_trajectory = "trajectory_9_gGktFtre";
+            let current_trajectory = "trajectory_10_2Cv-w5kd";
             log::info!("[execute_agent_flow] trajectory   : {}", current_trajectory);
             let &mut mut fallback = &mut false;
             let mut plan_count = parameters.max_rollout - 1;

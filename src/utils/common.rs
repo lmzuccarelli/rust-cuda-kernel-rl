@@ -89,6 +89,7 @@ pub fn find_most_performant_kernel(base_dir: String) -> Result<(), Box<dyn std::
     let re = Regex::new("reward[\\s]*:\\s([0-9\\.]+)")?;
     let mut max_reward = 0.0;
     let mut kernel_path = String::new();
+    let mut reward_values = String::new();
     for e in WalkDir::new(base_dir) {
         match e {
             Ok(obj) => {
@@ -100,6 +101,7 @@ pub fn find_most_performant_kernel(base_dir: String) -> Result<(), Box<dyn std::
                             Ok(contents) => {
                                 for cap in re.captures_iter(&contents) {
                                     let reward = cap[1].to_string().parse::<f64>()?;
+                                    reward_values.push_str(&format!("{},", reward));
                                     if reward > max_reward {
                                         max_reward = reward;
                                         kernel_path = file.to_string();
@@ -136,6 +138,11 @@ pub fn find_most_performant_kernel(base_dir: String) -> Result<(), Box<dyn std::
         format!("{}/rl-ncu/final_rl_cuda_perf.cu", write_dir[0]),
         kernel_contents,
     )?;
+    fs::write(
+        format!("{}/rl-ncu/rewards.csv", write_dir[0]),
+        reward_values,
+    )?;
+
     Ok(())
 }
 
