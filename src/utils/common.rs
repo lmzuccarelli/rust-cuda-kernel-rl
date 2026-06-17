@@ -165,11 +165,12 @@ pub fn find_cuda_file(
     dir: String,
     fallback: &mut bool,
 ) -> Result<(String, String), Box<dyn std::error::Error>> {
-    let files = fs::read_dir(dir.clone())?;
-    log::trace!("[find_cuda_file] using directory {}", dir);
+    log::trace!("[find_cuda_file] fallback {}", *fallback);
+    log::debug!("[find_cuda_file] using directory {}", dir);
     let mut cuda_kernel = String::new();
     let mut cuda_file = String::new();
     if !*fallback {
+        let files = fs::read_dir(dir.clone())?;
         for f in files {
             match f {
                 Ok(name) => {
@@ -191,6 +192,7 @@ pub fn find_cuda_file(
         let fallback_path = dir.split("step_").next().unwrap_or("");
         // the objective is to find and copy the cuda kernel in step_0
         // to the current step as fallback
+        log::debug!("[find_cuda_file] fallback path {}", fallback_path);
         let files = fs::read_dir(format!("{}step_0", fallback_path))?;
         for f in files {
             // we know that there are only files in this directory
@@ -202,16 +204,12 @@ pub fn find_cuda_file(
                             format!("{}step_0/{}", fallback_path, cf.clone()),
                             format!("{}/{}", dir, cf),
                         )?;
-                        log::debug!("[find_cuda_file] current dir {}", dir);
-                        log::debug!("[find_cuda_file] using fallback dir {}", fallback_path);
-                        log::debug!("[find_cuda_file] using fallback kernel {}", cf);
+                        log::trace!("[find_cuda_file] current dir {}", dir);
+                        log::trace!("[find_cuda_file] using fallback dir {}", fallback_path);
+                        log::trace!("[find_cuda_file] using fallback kernel {}", cf);
                         cuda_kernel =
                             fs::read_to_string(format!("{}step_0/{}", fallback_path, cf))?;
                         cuda_file = cf.clone();
-                    }
-                    // delete the prompt file
-                    if cf.contains(".prompt") {
-                        fs::remove_file(format!("{}/{}", dir, cf))?;
                     }
                 }
                 Err(e) => {
