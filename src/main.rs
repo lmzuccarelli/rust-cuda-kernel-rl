@@ -72,6 +72,27 @@ fn main() {
                     Some(ref openapi_url) => {
                         hm.insert("model".to_string(), parameters.llm_model.clone());
                         hm.insert("openapi_url".to_string(), openapi_url.to_owned());
+                        match parameters.token_file {
+                            Some(ref tf) => {
+                                let token_res = fs::read_to_string(tf);
+                                match token_res {
+                                    Ok(token) => {
+                                        hm.insert("token".to_string(), token);
+                                    }
+                                    Err(e) => {
+                                        log::error!("[main] reading token file {}", e);
+                                        std::process::exit(1);
+                                    }
+                                }
+                                *MAP_LOOKUP.lock().unwrap() = Some(hm.clone());
+                            }
+                            None => {
+                                log::error!(
+                                    "[main] the field token_file is mandatory when not using claude"
+                                );
+                                std::process::exit(1);
+                            }
+                        }
                     }
                     None => {
                         log::error!(
@@ -81,25 +102,6 @@ fn main() {
                     }
                 },
                 _ => {}
-            }
-            match parameters.token_file {
-                Some(ref tf) => {
-                    let token_res = fs::read_to_string(tf);
-                    match token_res {
-                        Ok(token) => {
-                            hm.insert("token".to_string(), token);
-                        }
-                        Err(e) => {
-                            log::error!("[main] reading token file {}", e);
-                            std::process::exit(1);
-                        }
-                    }
-                    *MAP_LOOKUP.lock().unwrap() = Some(hm.clone());
-                }
-                None => {
-                    log::error!("[main] the field token_file is mandatory when not using claude");
-                    std::process::exit(1);
-                }
             }
             ("llm".to_string(), parameters)
         }

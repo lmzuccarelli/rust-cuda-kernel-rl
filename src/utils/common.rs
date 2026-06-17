@@ -140,9 +140,9 @@ pub fn find_most_performant_kernel(base_dir: String) -> Result<(), Box<dyn std::
     )?;
     fs::write(
         format!("{}/rl-ncu/rewards.csv", write_dir[0]),
-        reward_values,
+        // exclude trailing ","
+        &reward_values[0..reward_values.len() - 1],
     )?;
-
     Ok(())
 }
 
@@ -207,7 +207,11 @@ pub fn find_cuda_file(
                         log::debug!("[find_cuda_file] using fallback kernel {}", cf);
                         cuda_kernel =
                             fs::read_to_string(format!("{}step_0/{}", fallback_path, cf))?;
-                        cuda_file = cf;
+                        cuda_file = cf.clone();
+                    }
+                    // delete the prompt file
+                    if cf.contains(".prompt") {
+                        fs::remove_file(format!("{}/{}", dir, cf))?;
                     }
                 }
                 Err(e) => {

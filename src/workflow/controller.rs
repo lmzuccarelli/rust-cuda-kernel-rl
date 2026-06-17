@@ -331,7 +331,7 @@ impl ControllerInterface for Controller {
                         Ok(_) => {
                             log::info!(
                                 "[execute_agent_flow] created next step directory {}",
-                                local_target_dir
+                                next_target_dir
                             );
                         }
                         Err(e) => {
@@ -539,7 +539,6 @@ impl ControllerInterface for Controller {
                     format!("{}/{}.prompt", next_target_dir, plan.technique),
                     task_prompt.clone(),
                 );
-
                 match wr_res {
                     Ok(_) => {
                         log::info!(
@@ -548,7 +547,7 @@ impl ControllerInterface for Controller {
                         );
                     }
                     Err(e) => {
-                        log::error!("[execute_agent_flow] failed to save {} prompt", e);
+                        log::error!("[execute_agent_flow] failed to save prompt {}", e);
                         fallback = true;
                         continue;
                     }
@@ -679,8 +678,10 @@ mod tests {
             "{}/logs/{}/{}/rl-ncu/trajectory_1_mINMOfqW/step_3",
             parameters.working_dir, model, item
         );
-        let (cuda_file, _cuda_kernel) = find_cuda_file(base_dir, &mut true)?;
-        println!("fallback {}", cuda_file);
+        // uncomment to test
+        // NB this deletes the prompt file so use with caution
+        // let (cuda_file, _cuda_kernel) = find_cuda_file(base_dir, &mut true)?;
+        // println!("fallback {}", cuda_file);
 
         //let cuda_kernel = fs::read_to_string("tests/tensor_core_utilization.cu")?;
         let cuda_kernel = fs::read_to_string("tests/memory_compute_overlap.cu")?;
