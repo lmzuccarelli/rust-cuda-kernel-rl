@@ -126,7 +126,7 @@ impl LlmInterface for LlmClaude {
         let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
         // preserve output
         println!("{}", stdout);
-        log::info!("completed task in {:?}", elapsed);
+        log::info!("[run] executing llm claude completed task in {:?}", elapsed);
 
         if !output.status.success() {
             // return the first failure (fail fast)
@@ -151,7 +151,10 @@ impl LlmInterface for LlmOpenCode {
         let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
         // preserve output
         println!("{}", stdout);
-        log::info!("completed task in {:?}", elapsed);
+        log::info!(
+            "[run] executing llm opencode completed task in {:?}",
+            elapsed
+        );
 
         if !output.status.success() {
             // return the first failure (fail fast)
@@ -172,9 +175,6 @@ impl LlmInterfaceOpenApi for LlmOpenApi {
         log::debug!("[run] executing llm openapi inference endpoint");
         let start = Instant::now();
 
-        let elapsed = start.elapsed();
-        log::info!("completed task in {:?}", elapsed);
-
         let system_msg = RequestMessage {
             role: "user".to_string(),
             content: "you are a cuda kernel expert, help the user with generating code, analyzing and profiling of cuda kernels".to_string(),
@@ -190,6 +190,7 @@ impl LlmInterfaceOpenApi for LlmOpenApi {
             messages: vec_msgs,
         };
         let json_request = serde_json::to_string(&rs)?;
+        log::debug!("[run] openapi json payload {}", json_request);
 
         let client = Client::builder()
             .danger_accept_invalid_certs(true)
@@ -204,7 +205,10 @@ impl LlmInterfaceOpenApi for LlmOpenApi {
             .send()
             .await?;
 
-        log::debug!("[process_post_call] status {}", client_response.status());
+        log::debug!(
+            "[run] executing llm openapi status {}",
+            client_response.status()
+        );
         if client_response.status() != StatusCode::OK {
             let response = client_response.bytes().await?;
             let result = String::from_utf8(response.to_vec())?;
@@ -214,17 +218,19 @@ impl LlmInterfaceOpenApi for LlmOpenApi {
         let chat_response: OpenaiChatCompletions = serde_json::from_slice(&response)?;
 
         log::debug!(
-            "[process_post_call] prompt tokens {}",
+            "[run] executing llm openapi prompt tokens {}",
             chat_response.usage.prompt_tokens
         );
         log::debug!(
-            "[process_post_call] completion tokens {}",
+            "[run] executing llm openapi completion tokens {}",
             chat_response.usage.completion_tokens
         );
         log::debug!(
-            "[process_post_call] total tokens {}",
+            "[run] executing llm openapi total tokens {}",
             chat_response.usage.total_tokens
         );
+        let elapsed = start.elapsed();
+        log::info!("[run] executin llm openapi completed task in {:?}", elapsed);
 
         Ok(chat_response.choices[0].message.content.clone())
     }

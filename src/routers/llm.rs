@@ -14,6 +14,7 @@ pub async fn endpoints(req: Request<Incoming>) -> Result<Response<Full<Bytes>>, 
     let mut response = Response::new(Full::default());
     let parameters = req.uri().path().split("/").collect::<Vec<&str>>();
     let agent_type = get_agent(parameters.clone());
+    log::debug!("[endpoint] llm reuest {:?}", parameters);
     match *req.method() {
         Method::POST => {
             let data = req.into_body().collect().await?.to_bytes();

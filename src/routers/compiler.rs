@@ -9,7 +9,7 @@ use hyper::body::{Bytes, Incoming};
 pub async fn endpoints(req: Request<Incoming>) -> Result<Response<Full<Bytes>>, hyper::Error> {
     let mut response = Response::new(Full::default());
     let request = req.uri().path();
-    log::debug!("{}", request);
+    log::debug!("[endpoint] compile request {}", request);
     match *req.method() {
         Method::POST => match request {
             x if x.contains("/v1/compile") => {
