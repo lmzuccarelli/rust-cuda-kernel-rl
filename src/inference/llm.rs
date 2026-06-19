@@ -192,10 +192,17 @@ impl LlmInterfaceOpenApi for LlmOpenApi {
         let json_request = serde_json::to_string(&rs)?;
         log::debug!("[run] openapi json payload {}", json_request);
 
-        let client = Client::builder()
+        let client_res = Client::builder()
             .danger_accept_invalid_certs(true)
-            .timeout(Duration::new(1200, 0))
-            .build()?;
+            //.timeout(Duration::new(1200, 0))
+            .build();
+
+        let client = match client_res {
+            Ok(client) => client,
+            Err(e) => {
+                return Err(Box::from(format!("[run] llm openapi {} ", e)));
+            }
+        };
 
         let client_response = client
             .post(url)

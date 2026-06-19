@@ -23,7 +23,7 @@ short-id = "0.5.0"
 futures = "0.3.32"
 walkdir = "2.5.0"
 rand = "0.10.1"
-reqwest = "0.13.4"
+reqwest = { version= "0.13.4" }
 
 [profile.release]
 strip = true # Strip symbols from the binary
