@@ -65,6 +65,7 @@ pub async fn endpoints(req: Request<Incoming>) -> Result<Response<Full<Bytes>>, 
 // execute the agent depending on type
 // handle the error with StatusCode
 async fn execute_agent(agent_type: LlmAgent, prompt: String) -> (StatusCode, String) {
+    log::debug!("[execute_agent] agent type {:?}", agent_type);
     let (status, result) = match agent_type {
         LlmAgent::Claude => {
             let res = LlmClaude::run(prompt).await;

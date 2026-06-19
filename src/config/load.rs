@@ -52,7 +52,7 @@ impl FromStr for LlmAgent {
         match input {
             "claude" => Ok(LlmAgent::Claude),
             "opencode" => Ok(LlmAgent::Opencode),
-            "Bat" => Ok(LlmAgent::Api),
+            "api" => Ok(LlmAgent::Api),
             _ => Err(()),
         }
     }

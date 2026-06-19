@@ -101,7 +101,7 @@ impl ControllerInterface for Controller {
             // as we are saving locally to replay buffer , change out to logs
             let local_baseline_dir = baseline_dir.replace("/out/", "/logs/");
 
-            if x & 2u8 == 2 {
+            if x & 1u8 == 1 {
                 // call the compile endpoint
                 log::info!("[execute_baseline_flow] baseline calling compile cuda kernel endpoint");
                 let url = format!("{}/v1/compile", parameters.compile_server_url);
@@ -117,7 +117,7 @@ impl ControllerInterface for Controller {
                 code = fs::read_to_string(format!("{}/init.cu", local_baseline_dir))?;
             }
 
-            if x & 4u8 == 4 {
+            if x & 2u8 == 2 {
                 // call the execute endpoint
                 log::info!("[execute_baseline_flow] baseline calling execute cuda kernel endpoint");
                 let url = format!("{}/v1/execute", parameters.gpu_server_url);
@@ -125,7 +125,7 @@ impl ControllerInterface for Controller {
                 process_post_call(Some(file_name), url, payload.clone()).await?;
             }
 
-            if x & 8u8 == 8 {
+            if x & 4u8 == 4 {
                 // call the nvidia ncu profile endpoint
                 log::info!("[execute_baseline_flow] baseline calling profile cuda kernel endpoint");
                 let url = format!("{}/v1/profile", parameters.gpu_server_url);
@@ -141,14 +141,18 @@ impl ControllerInterface for Controller {
                 elapsed_cycles
             );
 
-            if x & 16u8 == 16 {
+            if x & 8u8 == 8 {
                 log::info!(
                     "[execute_baseline_flow] baseline calling llm endpoint (current state profile)"
                 );
                 // set the initial prompt for the llm
                 let prompt = get_profile_prompt(code.clone(), ncu_report.clone()).replace("\n", "");
                 // call the llm endpoint
-                let url = format!("{}/v1/prompt", parameters.llm_server_url);
+                let url = format!(
+                    "{}/v1/prompt/{}",
+                    parameters.llm_server_url,
+                    parameters.llm_agent.to_string().to_lowercase()
+                );
                 let file_name = format!("{}/llm_state_response.txt", local_baseline_dir);
                 state = process_post_call(Some(file_name), url, prompt).await?;
             } else {
@@ -156,12 +160,16 @@ impl ControllerInterface for Controller {
                     fs::read_to_string(format!("{}/llm_state_response.txt", local_baseline_dir))?;
             }
 
-            if x & 32u8 == 32 {
+            if x & 16u8 == 16 {
                 log::info!("[execute_baseline_flow] baseline calling llm endpoint (match state)");
                 // set the initial prompt for the llm
                 let prompt = get_state_match_prompt(state.clone());
                 // call the llm endpoint
-                let url = format!("{}/v1/prompt", parameters.llm_server_url);
+                let url = format!(
+                    "{}/v1/prompt/{}",
+                    parameters.llm_server_url,
+                    parameters.llm_agent.to_string().to_lowercase()
+                );
                 let file_name = format!("{}/llm_match_state_response.txt", local_baseline_dir);
                 match_state = process_post_call(Some(file_name), url, prompt).await?;
             } else {
@@ -171,7 +179,7 @@ impl ControllerInterface for Controller {
                 ))?;
             }
 
-            if x & 64u8 == 64 {
+            if x & 32u8 == 32 {
                 log::info!(
                     "[execute_baseline_flow] baseline calling llm endpoint (optimization plan)"
                 );
@@ -184,7 +192,11 @@ impl ControllerInterface for Controller {
                     avail_opt,
                 );
                 // call the llm endpoint
-                let url = format!("{}/v1/prompt", parameters.llm_server_url);
+                let url = format!(
+                    "{}/v1/prompt/{}",
+                    parameters.llm_server_url,
+                    parameters.llm_agent.to_string().to_lowercase()
+                );
                 let file_name = format!("{}/optimization-plan.json", local_baseline_dir);
                 json_plan = process_post_call(Some(file_name), url, prompt_op).await?;
             } else {
@@ -192,7 +204,7 @@ impl ControllerInterface for Controller {
                     fs::read_to_string(format!("{}/optimization-plan.json", local_baseline_dir))?;
             }
 
-            if x & 128u8 == 128 {
+            if x & 64u8 == 64 {
                 let start = Instant::now();
                 log::info!("[execute_baseline_flow] executing rollout");
                 let json_plan_updated = json_plan.replace("```json", "");
@@ -234,7 +246,11 @@ impl ControllerInterface for Controller {
                         task_prompt.clone(),
                     )?;
 
-                    let url = format!("{}/v1/prompt", parameters.llm_server_url);
+                    let url = format!(
+                        "{}/v1/prompt/{}",
+                        parameters.llm_server_url,
+                        parameters.llm_agent.to_string().to_lowercase()
+                    );
                     // this will always start with step 0, then within the complex flow
                     // each new step (until max.rollout) will be added
                     let prompt_file_name = format!(
