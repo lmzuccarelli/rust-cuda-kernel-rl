@@ -173,6 +173,10 @@ impl LlmInterfaceOpenApi for LlmOpenApi {
         model: String,
     ) -> Result<String, Box<dyn std::error::Error>> {
         log::debug!("[run] executing llm openapi inference endpoint");
+        log::debug!("[run] executing llm openapi url {}", url);
+        log::debug!("[run] executing llm openapi model {}", model);
+        log::debug!("[run] executing llm openapi token {}", token);
+
         let start = Instant::now();
 
         let system_msg = RequestMessage {
@@ -190,55 +194,63 @@ impl LlmInterfaceOpenApi for LlmOpenApi {
             messages: vec_msgs,
         };
         let json_request = serde_json::to_string(&rs)?;
-        log::debug!("[run] openapi json payload {}", json_request);
+        log::trace!("[run] openapi json payload {}", json_request);
 
         let client_res = Client::builder()
             .danger_accept_invalid_certs(true)
-            //.timeout(Duration::new(1200, 0))
+            .http1_title_case_headers()
+            .timeout(Duration::new(1200, 0))
             .build();
 
         let client = match client_res {
-            Ok(client) => client,
+            Ok(client) => {
+                log::debug!("[run] llm openapi client created");
+                client
+            }
             Err(e) => {
                 return Err(Box::from(format!("[run] llm openapi {} ", e)));
             }
         };
 
-        let client_response = client
+        let client_res = client
             .post(url)
-            .bearer_auth(token)
+            .bearer_auth(token.to_owned().trim())
             .header("Content-Type", "application/json")
             .body(json_request)
             .send()
-            .await?;
+            .await;
 
-        log::debug!(
-            "[run] executing llm openapi status {}",
-            client_response.status()
-        );
-        if client_response.status() != StatusCode::OK {
-            let response = client_response.bytes().await?;
-            let result = String::from_utf8(response.to_vec())?;
-            return Err(Box::from(result));
-        }
-        let response = client_response.bytes().await?;
-        let chat_response: OpenaiChatCompletions = serde_json::from_slice(&response)?;
+        let response = match client_res {
+            Ok(result) => {
+                let status = result.status();
+                match status {
+                    StatusCode::OK => {
+                        let contents = result.bytes().await?;
+                        let chat_response: OpenaiChatCompletions =
+                            serde_json::from_slice(&contents)?;
+                        chat_response.choices[0].message.content.clone()
+                    }
+                    _ => {
+                        let contents = result.bytes().await?;
+                        return Err(Box::from(format!(
+                            "[run] llm openapi {}",
+                            String::from_utf8(contents.to_vec())
+                                .unwrap_or("could not parse error".to_string())
+                        )));
+                    }
+                }
+            }
+            Err(e) => {
+                return Err(Box::from(format!("[run] llm openapi error {}", e)));
+            }
+        };
 
-        log::debug!(
-            "[run] executing llm openapi prompt tokens {}",
-            chat_response.usage.prompt_tokens
-        );
-        log::debug!(
-            "[run] executing llm openapi completion tokens {}",
-            chat_response.usage.completion_tokens
-        );
-        log::debug!(
-            "[run] executing llm openapi total tokens {}",
-            chat_response.usage.total_tokens
-        );
         let elapsed = start.elapsed();
-        log::info!("[run] executin llm openapi completed task in {:?}", elapsed);
+        log::info!(
+            "[run] executing llm openapi completed task in {:?}",
+            elapsed
+        );
 
-        Ok(chat_response.choices[0].message.content.clone())
+        Ok(response)
     }
 }
