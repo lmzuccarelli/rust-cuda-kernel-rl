@@ -1,5 +1,7 @@
 use serde_derive::{Deserialize, Serialize};
+use std::fmt;
 use std::fs::File;
+use std::str::FromStr;
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct Parameters {
@@ -11,6 +13,7 @@ pub struct Parameters {
     pub workflow_batch: Vec<String>,
     pub working_dir: String,
     pub llm_model: String,
+    pub llm_agent: LlmAgent,
     pub token_file: Option<String>,
     pub openapi_url: Option<String>,
     pub gpu_arch: u8,
@@ -28,6 +31,31 @@ pub struct WorkItem {
     pub working_dir: String,
     pub kernel_name: Option<String>,
     pub code: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub enum LlmAgent {
+    Claude,
+    Opencode,
+    Api,
+}
+
+impl fmt::Display for LlmAgent {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{:?}", self)
+    }
+}
+
+impl FromStr for LlmAgent {
+    type Err = ();
+    fn from_str(input: &str) -> Result<LlmAgent, Self::Err> {
+        match input {
+            "claude" => Ok(LlmAgent::Claude),
+            "opencode" => Ok(LlmAgent::Opencode),
+            "Bat" => Ok(LlmAgent::Api),
+            _ => Err(()),
+        }
+    }
 }
 
 pub trait ConfigInterface {

@@ -8,7 +8,8 @@
     "level1/001_Square_matrix_multiplication"
   ],
   "working_dir": "/home/lzuccarelli/Projects/rust-cuda-kernel-rl",
-  "llm_model": "opus-4-6",
+  "llm_agent": "Openapi",
+  "llm_model": "gpt-oss-120b",
   "openapi_url": "https://api.cerebras.ai/v1/chat/completions",
   "max_rollout": 10,
   "rollout_start": 8,

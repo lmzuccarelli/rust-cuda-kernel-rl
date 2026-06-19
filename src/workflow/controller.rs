@@ -325,7 +325,7 @@ impl ControllerInterface for Controller {
                     current_trajectory,
                     step + 1
                 );
-                if step <= parameters.max_rollout - 1 {
+                if step < parameters.max_rollout {
                     let res = fs::create_dir_all(next_target_dir.clone());
                     match res {
                         Ok(_) => {
@@ -351,7 +351,7 @@ impl ControllerInterface for Controller {
                 let (cuda_file, code) = find_cuda_file(local_target_dir.clone(), &mut fallback)?;
                 log::info!("[execute_agent_flow] using kernel file {}", cuda_file);
                 let payload = format!(
-                    r##"{{ "name": "{}", "working_dir": "{}", "gpu_arch": "{}" , "target_dir": "{}", "kernel_name": "{}" , "code": {:?} }}"##,
+                    r##"{{ "name": "{}", "working_dir": "{}", gpu_arch": "{}" , "target_dir": "{}", "kernel_name": "{}" , "code": {:?} }}"##,
                     item, parameters.working_dir, parameters.gpu_arch, target_dir, cuda_file, code
                 );
 
@@ -448,7 +448,11 @@ impl ControllerInterface for Controller {
                 let state_prompt =
                     get_profile_prompt(code.clone(), ncu_report.clone()).replace("\n", "");
                 // call the llm endpoint
-                let url = format!("{}/v1/prompt/claude", parameters.llm_server_url);
+                let url = format!(
+                    "{}/v1/prompt/{}",
+                    parameters.llm_server_url,
+                    parameters.llm_agent.to_string().to_lowercase()
+                );
                 let file_name = format!("{}/llm_state_response.txt", local_target_dir);
                 let state_res = process_post_call(Some(file_name), url, state_prompt).await;
                 let state = match state_res {
@@ -470,7 +474,11 @@ impl ControllerInterface for Controller {
                     get_optimization_plan(plan_count, state.clone(), code.clone(), avail_opt);
                 // call llm for optimization plan
                 log::info!("[execute_agent_flow] calling llm (optimization plan)");
-                let url = format!("{}/v1/prompt/claude", parameters.llm_server_url);
+                let url = format!(
+                    "{}/v1/prompt/{}",
+                    parameters.llm_server_url,
+                    parameters.llm_agent.to_string().to_lowercase()
+                );
                 let file_name = format!("{}/optimization-plan.json", local_target_dir);
                 let json_plan_res = process_post_call(Some(file_name), url, prompt_op).await;
                 let json_plan = match json_plan_res {
@@ -554,7 +562,11 @@ impl ControllerInterface for Controller {
                 };
 
                 log::info!("[execute_agent_flow] calling llm (task generate code)");
-                let url = format!("{}/v1/prompt/claude", parameters.llm_server_url);
+                let url = format!(
+                    "{}/v1/prompt/{}",
+                    parameters.llm_server_url,
+                    parameters.llm_agent.to_string().to_lowercase()
+                );
                 let file_name = format!("{}/{}_llm_response.txt", next_target_dir, plan.technique);
                 let contents_res = process_post_call(Some(file_name), url, task_prompt).await;
                 match contents_res {
@@ -622,6 +634,8 @@ mod tests {
                 std::process::exit(1);
             }
         };
+
+        println!("[main] testing parameters {:#?}", parameters);
 
         let item = "level1/001_Square_matrix_multiplication";
         let model = "opus-4-6";

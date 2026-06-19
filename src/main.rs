@@ -33,7 +33,7 @@ static MAP_LOOKUP: Mutex<Option<HashMap<String, String>>> = Mutex::new(None);
 
 // This application must be executed on a server with GPU capabilities
 // The premise here is to be able use this service as remote
-// enabling the compilation, testing and profiling of a cuda kernel
+// enabling the compilation, testing and profiling of cuda kernels
 // the results can then be used for reinforcment learning
 fn main() {
     let args = Cli::parse();

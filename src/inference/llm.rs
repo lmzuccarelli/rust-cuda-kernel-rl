@@ -111,6 +111,7 @@ pub trait LlmInterfaceOpenApi {
 }
 
 pub struct LlmClaude {}
+pub struct LlmOpenCode {}
 pub struct LlmOpenApi {}
 
 impl LlmInterface for LlmClaude {
@@ -118,10 +119,32 @@ impl LlmInterface for LlmClaude {
         log::debug!("[run] executing llm claude inference endpoint");
         let start = Instant::now();
 
-        let output = Command::new("claude")
+        let output = Command::new("claude").args(vec!["-p", &prompt]).output()?;
+
+        let elapsed = start.elapsed();
+        let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        // preserve output
+        println!("{}", stdout);
+        log::info!("completed task in {:?}", elapsed);
+
+        if !output.status.success() {
+            // return the first failure (fail fast)
+            return Err(Box::from(stderr));
+        }
+
+        Ok(stdout)
+    }
+}
+
+impl LlmInterface for LlmOpenCode {
+    async fn run(prompt: String) -> Result<String, Box<dyn std::error::Error>> {
+        log::debug!("[run] executing llm opencode inference endpoint");
+        let start = Instant::now();
+
+        let output = Command::new("opencode")
             .args(vec!["-p", &prompt])
-            .output()
-            .expect("failed to spawn shell");
+            .output()?;
 
         let elapsed = start.elapsed();
         let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
