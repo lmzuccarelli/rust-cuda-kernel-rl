@@ -180,7 +180,8 @@ pub fn find_cuda_file(
                     if cf.contains(".cu") {
                         // find the first kernel file in the directory
                         cuda_file = cf.clone();
-                        cuda_kernel = fs::read_to_string(format!("{}/{}", dir, cf))?;
+                        let contents = fs::read_to_string(format!("{}/{}", dir, cf))?;
+                        cuda_kernel = contents.chars().filter(|c| c.is_ascii()).collect();
                         break;
                     }
                 }
@@ -209,8 +210,9 @@ pub fn find_cuda_file(
                         log::trace!("[find_cuda_file] current dir {}", dir);
                         log::trace!("[find_cuda_file] using fallback dir {}", fallback_path);
                         log::trace!("[find_cuda_file] using fallback kernel {}", cf);
-                        cuda_kernel =
+                        let contents =
                             fs::read_to_string(format!("{}step_0/{}", fallback_path, cf))?;
+                        cuda_kernel = contents.chars().filter(|c| c.is_ascii()).collect();
                         cuda_file = cf.clone();
                     }
                 }

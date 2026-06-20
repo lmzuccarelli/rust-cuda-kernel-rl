@@ -370,12 +370,7 @@ impl ControllerInterface for Controller {
                 log::info!("[execute_agent_flow] using kernel file {}", cuda_file);
                 let payload = format!(
                     r##"{{ "name": "{}", "working_dir": "{}", "gpu_arch": "{}" , "target_dir": "{}", "kernel_name": "{}" , "code": {:?} }}"##,
-                    item,
-                    parameters.working_dir,
-                    parameters.gpu_arch,
-                    target_dir,
-                    cuda_file,
-                    code.replace("\u{a0}", "")
+                    item, parameters.working_dir, parameters.gpu_arch, target_dir, cuda_file, code
                 );
 
                 // 2. upload kernel
@@ -639,6 +634,7 @@ impl ControllerInterface for Controller {
 mod tests {
     // this brings everything from parent's scope into this scope
     use super::*;
+    use crate::config::load::WorkItem;
     use crate::{
         config::load::{ConfigInterface, ImplConfigInterface},
         utils::common::{find_most_performant_kernel, get_trajectories},
@@ -661,7 +657,7 @@ mod tests {
         println!("[main] testing parameters {:#?}", parameters);
 
         let item = "level1/001_Square_matrix_multiplication";
-        let model = "opus-4-6";
+        let model = "gpt-oss-120b";
         println!("[execute_baseline_flow] testing current flow control");
         let ncu_report = fs::read_to_string(format!(
             "logs/{}/{}/rl-ncu/baseline/profile.txt",
@@ -711,15 +707,22 @@ mod tests {
             );
         }
 
-        // uncomment to test
-        // NB this deletes the prompt file so use with caution
+        let base_dir = format!(
+            "{}/logs/{}/{}/rl-ncu/trajectory_1_Po9t6Fh_/step_0",
+            parameters.working_dir, model, item
+        );
+        let (cuda_file, cuda_kernel) = find_cuda_file(base_dir.clone(), &mut false)?;
+        println!("[run] cuda kernel file {}", cuda_file);
+        println!("[run] cuda kernel len {}", cuda_kernel.len());
+        let updated = cuda_kernel.replace("\u{a0}", " ").replace("\u{20}", " ");
 
-        // let base_dir = format!(
-        //    "{}/logs/{}/{}/rl-ncu/trajectory_xxx/step_3",
-        //    parameters.working_dir, model, item
-        //);
-        // let (cuda_file, _cuda_kernel) = find_cuda_file(base_dir, &mut true)?;
-        // println!("fallback {}", cuda_file);
+        let payload = format!(
+            r##"{{ "name": "{}", "working_dir": "{}", "gpu_arch": "{}" , "target_dir": "{}", "kernel_name": "{}" , "code": {:?} }}"##,
+            item, parameters.working_dir, parameters.gpu_arch, base_dir, cuda_file, updated
+        );
+
+        let work_item_res = serde_json::from_slice::<WorkItem>(&payload.as_bytes())?;
+        println!("[run] work items {:?}", work_item_res);
 
         //let cuda_kernel = fs::read_to_string("tests/tensor_core_utilization.cu")?;
         let cuda_kernel = fs::read_to_string("tests/memory_compute_overlap.cu")?;
