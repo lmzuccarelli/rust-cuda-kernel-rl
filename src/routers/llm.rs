@@ -90,7 +90,7 @@ async fn execute_agent(agent_type: LlmAgent, prompt: String) -> (StatusCode, Str
         }
         LlmAgent::Api => {
             let token = get_item("token").unwrap_or("".to_string());
-            let url = get_item("llm-endpoint").unwrap_or("".to_string());
+            let url = get_item("openapi_url").unwrap_or("".to_string());
             let model = get_item("model").unwrap_or("".to_string());
             let res = LlmOpenApi::run(prompt, url, token, model).await;
             match res {

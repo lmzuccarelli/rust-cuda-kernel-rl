@@ -82,11 +82,13 @@ pub struct CompletionTokensDetails {
 
 #[allow(unused)]
 #[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
 pub struct RequestSchema {
     pub model: String,
     pub messages: Vec<RequestMessage>,
     pub temperature: f64,
+    pub top_p: f64,
+    pub stream: bool,
+    pub max_tokens: i32,
 }
 
 #[allow(unused)]
@@ -175,7 +177,7 @@ impl LlmInterfaceOpenApi for LlmOpenApi {
         log::debug!("[run] executing llm openapi inference endpoint");
         log::debug!("[run] executing llm openapi url {}", url);
         log::debug!("[run] executing llm openapi model {}", model);
-        log::debug!("[run] executing llm openapi token {}", token);
+        log::debug!("[run] executing llm openapi prompt {}", prompt);
 
         let start = Instant::now();
 
@@ -191,6 +193,9 @@ impl LlmInterfaceOpenApi for LlmOpenApi {
         let rs = RequestSchema {
             model,
             temperature: 0.1,
+            stream: false,
+            max_tokens: 30000,
+            top_p: 0.8,
             messages: vec_msgs,
         };
         let json_request = serde_json::to_string(&rs)?;
@@ -214,7 +219,7 @@ impl LlmInterfaceOpenApi for LlmOpenApi {
 
         let client_res = client
             .post(url)
-            .bearer_auth(token.to_owned().trim())
+            .bearer_auth(token.trim())
             .header("Content-Type", "application/json")
             .body(json_request)
             .send()
@@ -223,9 +228,14 @@ impl LlmInterfaceOpenApi for LlmOpenApi {
         let response = match client_res {
             Ok(result) => {
                 let status = result.status();
+                log::debug!("[run] llm openapi response status {}", status);
                 match status {
                     StatusCode::OK => {
                         let contents = result.bytes().await?;
+                        log::debug!(
+                            "[run] llm openapi client response {}",
+                            String::from_utf8(contents.to_vec()).unwrap()
+                        );
                         let chat_response: OpenaiChatCompletions =
                             serde_json::from_slice(&contents)?;
                         chat_response.choices[0].message.content.clone()

@@ -1,6 +1,5 @@
 use crate::cli::schema::{Cli, Commands};
-use crate::config::load::Parameters;
-use crate::config::load::{ConfigInterface, ImplConfigInterface};
+use crate::config::load::{ConfigInterface, ImplConfigInterface, LlmAgent, Parameters};
 use crate::routers::*;
 use crate::utils::shell::{ShellExecute, ShellExecuteInterface};
 use crate::workflow::controller::{Controller, ControllerInterface};
@@ -67,8 +66,8 @@ fn main() {
         Some(Commands::Llm {}) => {
             // parameters used in service
             let mut hm: HashMap<String, String> = HashMap::new();
-            match parameters.llm_model.as_str() {
-                x if !x.contains("opus") => match parameters.openapi_url {
+            if parameters.llm_agent == LlmAgent::Api {
+                match parameters.openapi_url {
                     Some(ref openapi_url) => {
                         hm.insert("model".to_string(), parameters.llm_model.clone());
                         hm.insert("openapi_url".to_string(), openapi_url.to_owned());
@@ -88,7 +87,7 @@ fn main() {
                             }
                             None => {
                                 log::error!(
-                                    "[main] the field token_file is mandatory when not using claude"
+                                    "[main] the field token_file is mandatory when using the openapi agent"
                                 );
                                 std::process::exit(1);
                             }
@@ -96,12 +95,11 @@ fn main() {
                     }
                     None => {
                         log::error!(
-                            "[main] the field openapi_url is mandatory when not using claude"
+                            "[main] the field openapi_url is mandatory when using the openapi agent"
                         );
                         std::process::exit(1);
                     }
-                },
-                _ => {}
+                }
             }
             ("llm".to_string(), parameters)
         }
