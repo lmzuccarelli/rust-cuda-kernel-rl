@@ -64,7 +64,7 @@ pub struct PromptTokensDetails {
     #[serde(rename = "cached_tokens")]
     pub cached_tokens: i64,
     #[serde(rename = "audio_tokens")]
-    pub audio_tokens: i64,
+    pub audio_tokens: Option<i64>,
 }
 
 #[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -73,7 +73,7 @@ pub struct CompletionTokensDetails {
     #[serde(rename = "reasoning_tokens")]
     pub reasoning_tokens: i64,
     #[serde(rename = "audio_tokens")]
-    pub audio_tokens: i64,
+    pub audio_tokens: Option<i64>,
     #[serde(rename = "accepted_prediction_tokens")]
     pub accepted_prediction_tokens: i64,
     #[serde(rename = "rejected_prediction_tokens")]
@@ -177,7 +177,7 @@ impl LlmInterfaceOpenApi for LlmOpenApi {
         log::debug!("[run] executing llm openapi inference endpoint");
         log::debug!("[run] executing llm openapi url {}", url);
         log::debug!("[run] executing llm openapi model {}", model);
-        log::debug!("[run] executing llm openapi prompt {}", prompt);
+        log::debug!("[run] executing llm openapi prompt len {}", prompt.len());
 
         let start = Instant::now();
 
@@ -194,7 +194,7 @@ impl LlmInterfaceOpenApi for LlmOpenApi {
             model,
             temperature: 0.1,
             stream: false,
-            max_tokens: 30000,
+            max_tokens: 32000,
             top_p: 0.8,
             messages: vec_msgs,
         };
@@ -232,7 +232,7 @@ impl LlmInterfaceOpenApi for LlmOpenApi {
                 match status {
                     StatusCode::OK => {
                         let contents = result.bytes().await?;
-                        log::debug!(
+                        log::trace!(
                             "[run] llm openapi client response {}",
                             String::from_utf8(contents.to_vec()).unwrap()
                         );
