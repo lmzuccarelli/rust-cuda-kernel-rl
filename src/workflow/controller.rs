@@ -258,7 +258,8 @@ impl ControllerInterface for Controller {
                         trajectory_dir, plan.technique
                     );
                     let kernel_file_name =
-                        format!("{}step_0/{}.cu", trajectory_dir, plan.technique);
+                        format!("{}/step_0/{}.cu", trajectory_dir, plan.technique);
+
                     // execute in parallel
                     // Due to rate limiting on the cerebras endpoints
                     // we can't execute theses calls in parallel
