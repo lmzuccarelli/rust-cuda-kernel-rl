@@ -80,10 +80,6 @@ pub async fn endpoints(req: Request<Incoming>) -> Result<Response<Full<Bytes>>, 
             }
             x if x.contains("/v1/upload") => {
                 let data = req.into_body().collect().await?.to_bytes();
-                log::debug!(
-                    "[endpoints] DEBUG LMZ body result {}",
-                    String::from_utf8(data.to_vec()).unwrap()
-                );
                 let work_item_res = serde_json::from_slice::<WorkItem>(&data);
                 match work_item_res {
                     Ok(work_item) => {

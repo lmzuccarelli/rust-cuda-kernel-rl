@@ -370,7 +370,12 @@ impl ControllerInterface for Controller {
                 log::info!("[execute_agent_flow] using kernel file {}", cuda_file);
                 let payload = format!(
                     r##"{{ "name": "{}", "working_dir": "{}", "gpu_arch": "{}" , "target_dir": "{}", "kernel_name": "{}" , "code": {:?} }}"##,
-                    item, parameters.working_dir, parameters.gpu_arch, target_dir, cuda_file, code
+                    item,
+                    parameters.working_dir,
+                    parameters.gpu_arch,
+                    target_dir,
+                    cuda_file,
+                    code.replace("\u{a0}", "")
                 );
 
                 // 2. upload kernel
