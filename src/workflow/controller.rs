@@ -343,7 +343,7 @@ impl ControllerInterface for Controller {
                     current_trajectory,
                     step + 1
                 );
-                if step < parameters.max_rollout {
+                if step < parameters.max_rollout - 1 {
                     let res = fs::create_dir_all(next_target_dir.clone());
                     match res {
                         Ok(_) => {
@@ -369,7 +369,7 @@ impl ControllerInterface for Controller {
                 let (cuda_file, code) = find_cuda_file(local_target_dir.clone(), &mut fallback)?;
                 log::info!("[execute_agent_flow] using kernel file {}", cuda_file);
                 let payload = format!(
-                    r##"{{ "name": "{}", "working_dir": "{}", gpu_arch": "{}" , "target_dir": "{}", "kernel_name": "{}" , "code": {:?} }}"##,
+                    r##"{{ "name": "{}", "working_dir": "{}", "gpu_arch": "{}" , "target_dir": "{}", "kernel_name": "{}" , "code": {:?} }}"##,
                     item, parameters.working_dir, parameters.gpu_arch, target_dir, cuda_file, code
                 );
 
