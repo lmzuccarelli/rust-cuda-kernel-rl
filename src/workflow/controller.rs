@@ -318,7 +318,7 @@ impl ControllerInterface for Controller {
             );
             let trajectories = get_trajectories(trajectories_dir.clone())?;
             log::debug!("[execute_agent_flow] trajectories {:#?}", trajectories);
-            let current_trajectory = "trajectory_10_2Cv-w5kd";
+            let current_trajectory = "trajectory_1_Po9t6Fh_";
             log::info!("[execute_agent_flow] trajectory   : {}", current_trajectory);
             let &mut mut fallback = &mut false;
             let mut plan_count = parameters.max_rollout - 1;
@@ -360,12 +360,12 @@ impl ControllerInterface for Controller {
                     }
                 }
 
-                // N.B. the error handling is purposely set to "try" not break and leave the loop
-                // If there is an error the objective is to try continue to the next step moving using the basline kernel
+                // N.B. the error handling is purposely set to "try" not break and exit the loop
+                // If there is an error the objective is to continue to the next step using the step_0 kernel
                 // Nested Ok() Err() checks have been avoided for legibility reasons
 
                 // 1. read kernel code
-                // If for any reason the cuda kernel file canot be read exit immediately
+                // If for any reason the cuda kernel file cannot be read exit immediately
                 let (cuda_file, code) = find_cuda_file(local_target_dir.clone(), &mut fallback)?;
                 log::info!("[execute_agent_flow] using kernel file {}", cuda_file);
                 let payload = format!(

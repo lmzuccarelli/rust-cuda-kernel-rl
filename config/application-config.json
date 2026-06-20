@@ -10,7 +10,7 @@
   "working_dir": "/home/lzuccarelli/Projects/rust-cuda-kernel-rl",
   "llm_agent": "Api",
   "llm_model": "gpt-oss-120b",
-  "controller_mode": "Baseline",
+  "controller_mode": "Agent",
   "token_file": "/home/lzuccarelli/.cerebras/token",
   "openapi_url": "https://api.cerebras.ai/v1/chat/completions",
   "max_rollout": 10,
