@@ -6,13 +6,14 @@ use crate::inference::prompts::{
 };
 use crate::kernel::profile::{Profile, ProfileInterface};
 use crate::utils::common::{
-    extract_code, extract_code_all, extract_code_from_call, find_cuda_file,
-    find_most_performant_kernel, get_trajectories, pick_weighted,
+    extract_code, extract_code_from_call, find_cuda_file, find_most_performant_kernel,
+    get_trajectories, pick_weighted,
 };
 use crate::workflow::api_client::{process_get_call, process_post_call};
 use custom_logger as log;
-use futures::stream::FuturesUnordered;
-use futures::stream::StreamExt;
+// Due to rate limiting executing the agent in parallel is not used for now
+// use futures::stream::FuturesUnordered;
+// use futures::stream::StreamExt;
 use serde_derive::{Deserialize, Serialize};
 use short_id::short_id_with_bytes;
 use std::fs;
@@ -210,8 +211,7 @@ impl ControllerInterface for Controller {
                 let json_plan_updated = json_plan.replace("```json", "");
                 let plans = serde_json::from_str::<Vec<OptimizationPlan>>(&json_plan_updated)?;
                 let category = Profile::get_category(state)?;
-                //let mut count = 0;
-                let mut futs = FuturesUnordered::new();
+                // let mut futs = FuturesUnordered::new();
                 for x in 0..parameters.max_rollout {
                     let plan = pick_weighted(plans.clone())?;
                     // Generate a shorter 8-character ID (6 bytes)
@@ -260,35 +260,36 @@ impl ControllerInterface for Controller {
                     let kernel_file_name =
                         format!("{}step_0/{}.cu", trajectory_dir, plan.technique);
                     // execute in parallel
-                    futs.push(extract_code_from_call(
+                    // Due to rate limiting on the cerebras endpoints
+                    // we can't execute theses calls in parallel
+                    // commenting the code for now
+                    //futs.push(extract_code_from_call(
+                    //    Some(prompt_file_name),
+                    //    kernel_file_name,
+                    //    url,
+                    //    task_prompt,
+                    //));
+
+                    // if this fails exit immediately
+                    extract_code_from_call(
                         Some(prompt_file_name),
                         kernel_file_name,
                         url,
                         task_prompt,
-                    ));
-                }
-                // Wait for the remaining to finish.
-                while let Some(response) = futs.next().await {
-                    match response {
-                        Ok(_) => log::info!(
-                            "[execute_baseline_flow] call (extract_code_from_call) succeeded"
-                        ),
-                        Err(e) => log::error!("[execute_baseline_flow] call failed {}", e),
-                    }
+                    )
+                    .await?
                 }
 
-                let dir = format!(
-                    "{}/out/{}/{}/rl-ncu",
-                    parameters.working_dir, parameters.llm_model, item
-                );
-                let url = format!("{}/v1/upload", parameters.compile_server_url);
-                extract_code_all(
-                    dir,
-                    parameters.working_dir.to_owned(),
-                    url,
-                    parameters.gpu_arch,
-                )
-                .await?;
+                // see the comment above
+                // wait for the remaining to finish.
+                // while let Some(response) = futs.next().await {
+                //    match response {
+                //        Ok(_) => log::info!(
+                //            "[execute_baseline_flow] call (extract_code_from_call) succeeded"
+                //        ),
+                //        Err(e) => log::error!("[execute_baseline_flow] call failed {}", e),
+                //    }
+                //}
 
                 let elapsed = start.elapsed();
                 log::info!("[execute_baseline_flow] completed rollout in {:?}", elapsed);

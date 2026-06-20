@@ -6,6 +6,8 @@ use rand::prelude::*;
 use regex::Regex;
 use std::fs;
 use std::path::Path;
+use std::thread;
+use std::time::Duration;
 use walkdir::WalkDir;
 
 // common helper functions
@@ -228,9 +230,19 @@ pub async fn extract_code_from_call(
     url: String,
     data: String,
 ) -> Result<(), Box<dyn std::error::Error>> {
+    log::debug!(
+        "[extract_code_from_call] prompt file name {:?}",
+        prompt_file_name
+    );
+    log::debug!(
+        "[extract_code_from_call] kernel file name {}",
+        kernel_file_name
+    );
     let contents = process_post_call(prompt_file_name, url, data).await?;
     let code = extract_code(contents)?;
     fs::write(kernel_file_name, code)?;
+    log::info!("[extract_code_from_call] delaying thread (limit requests)");
+    thread::sleep(Duration::from_secs(60));
     Ok(())
 }
 

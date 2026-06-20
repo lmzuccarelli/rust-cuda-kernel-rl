@@ -15,6 +15,6 @@
   "openapi_url": "https://api.cerebras.ai/v1/chat/completions",
   "max_rollout": 10,
   "rollout_start": 0,
-  "flow_control": 127,
+  "flow_control": 64,
   "gpu_arch": 86
 }
