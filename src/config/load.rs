@@ -14,6 +14,7 @@ pub struct Parameters {
     pub working_dir: String,
     pub llm_model: String,
     pub llm_agent: LlmAgent,
+    pub controller_mode: ControllerMode,
     pub token_file: Option<String>,
     pub openapi_url: Option<String>,
     pub gpu_arch: u8,
@@ -38,6 +39,12 @@ pub enum LlmAgent {
     Claude,
     Opencode,
     Api,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub enum ControllerMode {
+    Baseline,
+    Agent,
 }
 
 impl fmt::Display for LlmAgent {

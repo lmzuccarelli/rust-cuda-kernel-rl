@@ -1,5 +1,7 @@
 use crate::cli::schema::{Cli, Commands};
-use crate::config::load::{ConfigInterface, ImplConfigInterface, LlmAgent, Parameters};
+use crate::config::load::{
+    ConfigInterface, ControllerMode, ImplConfigInterface, LlmAgent, Parameters,
+};
 use crate::routers::*;
 use crate::utils::shell::{ShellExecute, ShellExecuteInterface};
 use crate::workflow::controller::{Controller, ControllerInterface};
@@ -209,8 +211,14 @@ pub async fn execute(
     if command == "controller" {
         // only call health endpoints if we are not testing
         Controller::get_health(parameters.clone()).await?;
-        Controller::execute_baseline_flow(parameters.clone()).await?;
-        Controller::execute_agent_flow(parameters).await?;
+        match parameters.controller_mode {
+            ControllerMode::Baseline => {
+                Controller::execute_baseline_flow(parameters.clone()).await?;
+            }
+            ControllerMode::Agent => {
+                Controller::execute_agent_flow(parameters).await?;
+            }
+        }
         Ok(())
     } else {
         let port = get_port(command.clone(), parameters)?;
