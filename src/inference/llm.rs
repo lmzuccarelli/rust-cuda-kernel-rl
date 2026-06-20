@@ -20,7 +20,7 @@ pub struct OpenaiChatCompletions {
     pub choices: Vec<Choice>,
     pub usage: Usage,
     #[serde(rename = "service_tier")]
-    pub service_tier: String,
+    pub service_tier: Option<String>,
     #[serde(rename = "system_fingerprint")]
     pub system_fingerprint: Value,
 }
