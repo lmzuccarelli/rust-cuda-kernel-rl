@@ -193,13 +193,17 @@ pub fn find_cuda_file(
     }
     if *fallback | cuda_kernel.is_empty() {
         // we are at step 0 the fallback should be the baseline kernel
-        if dir.contains("step_0") {
-            log::info!("[find_cuda_file] fallback to use baseline init.cu");
-            let baseline_fallback_path = dir.split("trajectory_").next().unwrap_or("");
-            let contents =
-                fs::read_to_string(format!("{}/baseline/init.cu", baseline_fallback_path))?;
-            cuda_kernel = contents.chars().filter(|c| c.is_ascii()).collect();
-            cuda_file = "init.cu".to_string();
+        //if dir.contains("step_0") {
+        log::info!("[find_cuda_file] fallback to use baseline init.cu");
+        let baseline_fallback_path = dir.split("trajectory_").next().unwrap_or("");
+        let contents = fs::read_to_string(format!("{}/baseline/init.cu", baseline_fallback_path))?;
+        fs::copy(
+            format!("{}/init.cu", baseline_fallback_path),
+            format!("{}/init.cu", dir),
+        )?;
+        cuda_kernel = contents.chars().filter(|c| c.is_ascii()).collect();
+        cuda_file = "init.cu".to_string();
+        /*
         } else {
             // the objective is to find and copy the cuda kernel in step_0
             // to the current step as fallback
@@ -231,6 +235,7 @@ pub fn find_cuda_file(
                 }
             }
         }
+        */
         *fallback = false;
     }
     Ok((cuda_file, cuda_kernel))

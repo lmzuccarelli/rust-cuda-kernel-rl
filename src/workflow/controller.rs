@@ -17,6 +17,8 @@ use custom_logger as log;
 use serde_derive::{Deserialize, Serialize};
 use short_id::short_id_with_bytes;
 use std::fs;
+use std::thread;
+use std::time::Duration;
 use std::time::Instant;
 
 pub trait ControllerInterface {
@@ -369,6 +371,7 @@ impl ControllerInterface for Controller {
 
                 let mut payload = String::new();
                 let mut code = String::new();
+                let mut cuda_kernel_file = String::new();
 
                 // compile retry is hard coded to 2
                 for i in 0..2 {
@@ -414,6 +417,7 @@ impl ControllerInterface for Controller {
                                 "[execute_agent_flow] compile kernel completed successfully"
                             );
                             code = kernel_code;
+                            cuda_kernel_file = cuda_file;
                         }
                         Err(e) => {
                             log::error!("[execute_agent_flow] compile failed {}", e);
@@ -508,6 +512,9 @@ impl ControllerInterface for Controller {
                     }
                 };
 
+                // rate limit
+                thread::sleep(Duration::from_secs(30));
+
                 // 9. get optimization plan
                 // get the top_n matching optimizations in json format from the llm
                 let avail_opt = get_available_optimizations();
@@ -571,7 +578,15 @@ impl ControllerInterface for Controller {
                 // if this fails it due to regex (this will break our loop)
                 let category = Profile::get_category(state.clone())?;
                 // pick the weighted plan should not fail (unless WeightedIndex fails - severe)
-                let plan = pick_weighted(plans.clone())?;
+                let mut plan = pick_weighted(plans.clone())?;
+                if cuda_kernel_file.contains(&plan.technique) {
+                    plan = pick_weighted(plans)?;
+                    log::info!(
+                        "[execute_agent_flow] detected same technique {} updating to {}",
+                        cuda_kernel_file.split(".cu").next().unwrap_or("none"),
+                        plan.technique
+                    );
+                }
                 let state_category = get_performance_state_category();
                 // if file read files this should break the loop
                 let combined = get_combined(state_category)?;
@@ -608,6 +623,10 @@ impl ControllerInterface for Controller {
                     parameters.llm_server_url,
                     parameters.llm_agent.to_string().to_lowercase()
                 );
+
+                // rate limit
+                thread::sleep(Duration::from_secs(30));
+
                 let file_name = format!("{}/{}_llm_response.txt", next_target_dir, plan.technique);
                 let contents_res = process_post_call(Some(file_name), url, task_prompt).await;
                 match contents_res {
@@ -646,8 +665,9 @@ impl ControllerInterface for Controller {
                     }
                 }
             }
+
             // finally find the optimal cuda kernel
-            find_most_performant_kernel(trajectories_dir)?;
+            // find_most_performant_kernel(trajectories_dir)?;
         }
         Ok(())
     }
