@@ -149,8 +149,12 @@ pub fn find_most_performant_kernel(base_dir: String) -> Result<(), Box<dyn std::
 }
 
 pub fn pick_weighted(
-    plans: Vec<OptimizationPlan>,
+    mut plans: Vec<OptimizationPlan>,
+    exclude: Vec<String>,
 ) -> Result<OptimizationPlan, Box<dyn std::error::Error>> {
+    // first exclude plans that we know don't work
+    plans.retain(|x| !exclude.contains(&x.technique));
+
     let weights = plans
         .clone()
         .iter()

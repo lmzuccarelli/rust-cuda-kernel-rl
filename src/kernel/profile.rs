@@ -23,6 +23,9 @@ impl ProfileInterface for Profile {
         let start = Instant::now();
         let mut profile_buffer = String::new();
 
+        // restore working dir
+        env::set_current_dir(work_item.working_dir)?;
+
         // ensure we read and set LD_LIBARAY_PATH envar
         let ld_lib = env::var("LD_LIBRARY_PATH")?;
 
@@ -88,8 +91,6 @@ impl ProfileInterface for Profile {
             profile_buffer.push('\n');
             profile_buffer.push_str(&stdout);
         }
-        // restore working dir
-        env::set_current_dir(work_item.working_dir)?;
 
         Ok(profile_buffer)
     }

@@ -215,7 +215,7 @@ impl ControllerInterface for Controller {
                 let category = Profile::get_category(state)?;
                 // let mut futs = FuturesUnordered::new();
                 for x in 0..parameters.max_rollout {
-                    let plan = pick_weighted(plans.clone())?;
+                    let plan = pick_weighted(plans.clone(), vec![])?;
                     // Generate a shorter 8-character ID (6 bytes)
                     let short = short_id_with_bytes(6)?;
                     let trajectory_dir = format!(
@@ -323,7 +323,14 @@ impl ControllerInterface for Controller {
             let trajectories = get_trajectories(trajectories_dir.clone())?;
             log::debug!("[execute_agent_flow] trajectories {:#?}", trajectories);
 
-            let current_trajectory = "trajectory_1_Po9t6Fh_";
+            // from previosu execution we know these kernel optimization techniques are
+            // problematic
+            let mut vec_error_techniques: Vec<String> = vec![
+                "prefetching_strategies".to_owned(),
+                "tensor_core_utilization".to_owned(),
+                "thread_coarsening".to_owned(),
+            ];
+            let current_trajectory = "trajectory_2_K19GXpZk";
             log::info!("[execute_agent_flow] trajectory   : {}", current_trajectory);
             let &mut mut fallback = &mut false;
             let mut plan_count = parameters.max_rollout - 1;
@@ -423,6 +430,14 @@ impl ControllerInterface for Controller {
                         }
                         Err(e) => {
                             log::error!("[execute_agent_flow] compile failed {}", e);
+                            vec_error_techniques.push(
+                                cuda_file
+                                    .clone()
+                                    .split(".cu")
+                                    .next()
+                                    .unwrap_or("none")
+                                    .to_owned(),
+                            );
                             fallback = true;
                             continue;
                         }
@@ -431,7 +446,7 @@ impl ControllerInterface for Controller {
 
                 // the compile failed after 2 re-tries
                 if code.is_empty() {
-                    break;
+                    continue;
                 }
 
                 // 4. execute kernel
@@ -483,8 +498,7 @@ impl ControllerInterface for Controller {
                 contents.push_str(&format!("reward                  : {}\n", reward));
                 fs::write(format!("{}/stats.txt", local_target_dir), contents)?;
                 if perc < -100.0 {
-                    log::error!("[execute_agent_flow] degradation is too severe");
-                    fallback = true;
+                    log::warn!("[execute_agent_flow] degradation is severe");
                     continue;
                 }
 
@@ -509,7 +523,6 @@ impl ControllerInterface for Controller {
                     }
                     Err(e) => {
                         log::error!("[execute_agent_flow] calling llm state failed {}", e);
-                        fallback = true;
                         continue;
                     }
                 };
@@ -543,7 +556,6 @@ impl ControllerInterface for Controller {
                             "[execute_agent_flow] calling llm json optimization plan failed {}",
                             e
                         );
-                        fallback = true;
                         continue;
                     }
                 };
@@ -562,7 +574,6 @@ impl ControllerInterface for Controller {
                             "[execute_agent_flow] parsing optimization plan failed {}",
                             e
                         );
-                        fallback = true;
                         continue;
                     }
                 };
@@ -580,15 +591,13 @@ impl ControllerInterface for Controller {
                 // if this fails it due to regex (this will break our loop)
                 let category = Profile::get_category(state.clone())?;
                 // pick the weighted plan should not fail (unless WeightedIndex fails - severe)
-                let mut plan = pick_weighted(plans.clone())?;
-                if cuda_kernel_file.contains(&plan.technique) {
-                    plan = pick_weighted(plans)?;
-                    log::info!(
-                        "[execute_agent_flow] detected same technique {} updating to {}",
-                        cuda_kernel_file.split(".cu").next().unwrap_or("none"),
-                        plan.technique
-                    );
-                }
+                let plan = pick_weighted(plans.clone(), vec_error_techniques.clone())?;
+                log::warn!("[execute_agent_flow] selected plan {} ", plan.technique);
+                log::warn!("[execute_agent_flow] cuda file     {} ", cuda_kernel_file);
+                log::warn!(
+                    "[execute_agent_flow] exclude plans {:?}",
+                    vec_error_techniques
+                );
                 let state_category = get_performance_state_category();
                 // if file read files this should break the loop
                 let combined = get_combined(state_category)?;
@@ -614,7 +623,6 @@ impl ControllerInterface for Controller {
                     }
                     Err(e) => {
                         log::error!("[execute_agent_flow] failed to save prompt {}", e);
-                        fallback = true;
                         continue;
                     }
                 };
@@ -654,7 +662,6 @@ impl ControllerInterface for Controller {
                                     "[execute_agent_flow] failed to save cuda kernel {}",
                                     e
                                 );
-                                fallback = true;
                             }
                         }
                     }
@@ -663,7 +670,6 @@ impl ControllerInterface for Controller {
                             "[execute_agent_flow] process_post_call call generate code failed {}",
                             e
                         );
-                        fallback = true;
                     }
                 }
             }
@@ -746,7 +752,7 @@ mod tests {
         println!();
 
         for _x in 0..3 {
-            let pick = pick_weighted(plans.clone())?;
+            let pick = pick_weighted(plans.clone(), vec![])?;
             println!(
                 "[execute_baseline_flow] testing weighted plan {} {}",
                 pick.technique, pick.relevance_score
