@@ -367,45 +367,65 @@ impl ControllerInterface for Controller {
                 // If there is an error the objective is to continue to the next step using the step_0 kernel
                 // Nested Ok() Err() checks have been avoided for legibility reasons
 
-                // 1. read kernel code
-                // If for any reason the cuda kernel file cannot be read exit immediately
-                let (cuda_file, code) = find_cuda_file(local_target_dir.clone(), &mut fallback)?;
-                log::info!("[execute_agent_flow] using kernel file {}", cuda_file);
-                let payload = format!(
-                    r##"{{ "name": "{}", "working_dir": "{}", "gpu_arch": "{}" , "target_dir": "{}", "kernel_name": "{}" , "code": {:?} }}"##,
-                    item, parameters.working_dir, parameters.gpu_arch, target_dir, cuda_file, code
-                );
+                let mut payload = String::new();
+                let mut code = String::new();
 
-                // 2. upload kernel
-                log::info!("[execute_agent_flow] uploading kernel {}", cuda_file);
-                let url = format!("{}/v1/upload", parameters.compile_server_url);
-                let upload_res = process_post_call(None, url.clone(), payload.clone()).await;
-                match upload_res {
-                    Ok(_) => {
-                        log::info!("[execute_agent_flow] kernel uploaded successfully");
+                // compile retry is hard coded to 2
+                for i in 0..2 {
+                    // 1. read kernel code
+                    // If for any reason the cuda kernel file cannot be read exit immediately
+                    log::info!("[execute_agent_flow] compile retry loop {}", i);
+                    let (cuda_file, kernel_code) =
+                        find_cuda_file(local_target_dir.clone(), &mut fallback)?;
+                    log::info!("[execute_agent_flow] using kernel file {}", cuda_file);
+                    payload = format!(
+                        r##"{{ "name": "{}", "working_dir": "{}", "gpu_arch": "{}" , "target_dir": "{}", "kernel_name": "{}" , "code": {:?} }}"##,
+                        item,
+                        parameters.working_dir,
+                        parameters.gpu_arch,
+                        target_dir,
+                        cuda_file,
+                        kernel_code
+                    );
+
+                    // 2. upload kernel
+                    log::info!("[execute_agent_flow] uploading kernel {}", cuda_file);
+                    let url = format!("{}/v1/upload", parameters.compile_server_url);
+                    let upload_res = process_post_call(None, url.clone(), payload.clone()).await;
+                    match upload_res {
+                        Ok(_) => {
+                            log::info!("[execute_agent_flow] kernel uploaded successfully");
+                        }
+                        Err(e) => {
+                            log::error!("[execute_agent_flow] kernel upload error {}", e);
+                            fallback = true;
+                            continue;
+                        }
                     }
-                    Err(e) => {
-                        // no use carrying on move to the next step
-                        log::error!("[execute_agent_flow] kernel upload error {}", e);
-                        fallback = true;
-                        continue;
+
+                    // 3. compile kernel
+                    log::info!("[execute_agent_flow] calling compile cuda kernel endpoint",);
+                    let url = format!("{}/v1/compile", parameters.compile_server_url);
+                    let file_name = format!("{}/compile.txt", local_target_dir);
+                    let res = process_post_call(Some(file_name), url, payload.clone()).await;
+                    match res {
+                        Ok(_) => {
+                            log::info!(
+                                "[execute_agent_flow] compile kernel completed successfully"
+                            );
+                            code = kernel_code;
+                        }
+                        Err(e) => {
+                            log::error!("[execute_agent_flow] compile failed {}", e);
+                            fallback = true;
+                            continue;
+                        }
                     }
                 }
 
-                // 3. compile kernel
-                log::info!("[execute_agent_flow] calling compile cuda kernel endpoint",);
-                let url = format!("{}/v1/compile", parameters.compile_server_url);
-                let file_name = format!("{}/compile.txt", local_target_dir);
-                let res = process_post_call(Some(file_name), url, payload.clone()).await;
-                match res {
-                    Ok(_) => {
-                        log::info!("[execute_agent_flow] compile kernel completed successfully");
-                    }
-                    Err(e) => {
-                        log::error!("[execute_agent_flow] compile failed {}", e);
-                        fallback = true;
-                        continue;
-                    }
+                // the compile failed after 2 re-tries
+                if code.is_empty() {
+                    break;
                 }
 
                 // 4. execute kernel

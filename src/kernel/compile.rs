@@ -18,6 +18,9 @@ pub struct Compile {}
 
 impl CompileInterface for Compile {
     async fn run(work_item: WorkItem) -> Result<String, Box<dyn std::error::Error>> {
+        // restore working dir
+        env::set_current_dir(work_item.working_dir)?;
+
         log::debug!("[run] compiling cuda-kernel");
         let start = Instant::now();
 
@@ -102,8 +105,6 @@ impl CompileInterface for Compile {
             return Err(Box::from(stderr));
         }
 
-        // restore working dir
-        env::set_current_dir(work_item.working_dir)?;
         Ok(stdout)
     }
 

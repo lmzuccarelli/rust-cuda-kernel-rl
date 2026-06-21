@@ -193,7 +193,7 @@ pub fn find_cuda_file(
     }
     if *fallback | cuda_kernel.is_empty() {
         // we are at step 0 the fallback should be the baseline kernel
-        if dir.contains("step_1") {
+        if dir.contains("step_0") {
             log::info!("[find_cuda_file] fallback to use baseline init.cu");
             let baseline_fallback_path = dir.split("trajectory_").next().unwrap_or("");
             let contents =
