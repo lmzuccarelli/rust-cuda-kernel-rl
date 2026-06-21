@@ -374,7 +374,7 @@ impl ControllerInterface for Controller {
                 let mut cuda_kernel_file = String::new();
 
                 // compile retry is hard coded to 2
-                for i in 0..2 {
+                'retry: for i in 0..2 {
                     // 1. read kernel code
                     // If for any reason the cuda kernel file cannot be read exit immediately
                     log::info!("[execute_agent_flow] compile retry loop {}", i);
@@ -418,6 +418,8 @@ impl ControllerInterface for Controller {
                             );
                             code = kernel_code;
                             cuda_kernel_file = cuda_file;
+                            // compilation succeeded move on to the next workflow step
+                            break 'retry;
                         }
                         Err(e) => {
                             log::error!("[execute_agent_flow] compile failed {}", e);
