@@ -316,8 +316,11 @@ impl ControllerInterface for Controller {
                 "{}/logs/{}/{}/rl-ncu",
                 parameters.working_dir, parameters.llm_model, item
             );
+
+            // display only
             let trajectories = get_trajectories(trajectories_dir.clone())?;
             log::debug!("[execute_agent_flow] trajectories {:#?}", trajectories);
+
             let current_trajectory = "trajectory_1_Po9t6Fh_";
             log::info!("[execute_agent_flow] trajectory   : {}", current_trajectory);
             let &mut mut fallback = &mut false;

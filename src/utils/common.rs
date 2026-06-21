@@ -168,7 +168,7 @@ pub fn find_cuda_file(
     fallback: &mut bool,
 ) -> Result<(String, String), Box<dyn std::error::Error>> {
     log::trace!("[find_cuda_file] fallback {}", *fallback);
-    log::debug!("[find_cuda_file] using directory {}", dir);
+    log::trace!("[find_cuda_file] using directory {}", dir);
     let mut cuda_kernel = String::new();
     let mut cuda_file = String::new();
     if !*fallback {
@@ -192,32 +192,42 @@ pub fn find_cuda_file(
         }
     }
     if *fallback | cuda_kernel.is_empty() {
-        let fallback_path = dir.split("step_").next().unwrap_or("");
-        // the objective is to find and copy the cuda kernel in step_0
-        // to the current step as fallback
-        log::debug!("[find_cuda_file] fallback path {}", fallback_path);
-        let files = fs::read_dir(format!("{}step_0", fallback_path))?;
-        for f in files {
-            // we know that there are only files in this directory
-            match f {
-                Ok(name) => {
-                    let cf = name.file_name().to_string_lossy().to_string();
-                    if cf.contains(".cu") {
-                        fs::copy(
-                            format!("{}step_0/{}", fallback_path, cf.clone()),
-                            format!("{}/{}", dir, cf),
-                        )?;
-                        log::trace!("[find_cuda_file] current dir {}", dir);
-                        log::trace!("[find_cuda_file] using fallback dir {}", fallback_path);
-                        log::trace!("[find_cuda_file] using fallback kernel {}", cf);
-                        let contents =
-                            fs::read_to_string(format!("{}step_0/{}", fallback_path, cf))?;
-                        cuda_kernel = contents.chars().filter(|c| c.is_ascii()).collect();
-                        cuda_file = cf.clone();
+        // we are at step 0 the fallback should be the baseline kernel
+        if dir.contains("step_1") {
+            log::info!("[find_cuda_file] fallback to use baseline init.cu");
+            let baseline_fallback_path = dir.split("trajectory_").next().unwrap_or("");
+            let contents =
+                fs::read_to_string(format!("{}/baseline/init.cu", baseline_fallback_path))?;
+            cuda_kernel = contents.chars().filter(|c| c.is_ascii()).collect();
+            cuda_file = "init.cu".to_string();
+        } else {
+            // the objective is to find and copy the cuda kernel in step_0
+            // to the current step as fallback
+            let fallback_path = dir.split("step_").next().unwrap_or("");
+            log::trace!("[find_cuda_file] fallback path {}", fallback_path);
+            let files = fs::read_dir(format!("{}step_0", fallback_path))?;
+            for f in files {
+                // we know that there are only files in this directory
+                match f {
+                    Ok(name) => {
+                        let cf = name.file_name().to_string_lossy().to_string();
+                        if cf.contains(".cu") {
+                            fs::copy(
+                                format!("{}step_0/{}", fallback_path, cf.clone()),
+                                format!("{}/{}", dir, cf),
+                            )?;
+                            log::trace!("[find_cuda_file] current dir {}", dir);
+                            log::trace!("[find_cuda_file] using fallback dir {}", fallback_path);
+                            log::trace!("[find_cuda_file] using fallback kernel {}", cf);
+                            let contents =
+                                fs::read_to_string(format!("{}step_0/{}", fallback_path, cf))?;
+                            cuda_kernel = contents.chars().filter(|c| c.is_ascii()).collect();
+                            cuda_file = cf.clone();
+                        }
                     }
-                }
-                Err(e) => {
-                    return Err(Box::from(format!("[find_cuda_file] fallback error {}", e)));
+                    Err(e) => {
+                        return Err(Box::from(format!("[find_cuda_file] fallback error {}", e)));
+                    }
                 }
             }
         }
