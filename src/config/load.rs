@@ -21,6 +21,7 @@ pub struct Parameters {
     pub max_rollout: u8,
     pub rollout_start: u8,
     pub flow_control: u8,
+    pub create_stats: bool,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]

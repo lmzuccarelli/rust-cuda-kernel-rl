@@ -16,5 +16,6 @@
   "max_rollout": 10,
   "rollout_start": 0,
   "flow_control": 64,
-  "gpu_arch": 86
+  "gpu_arch": 86,
+  "create_stats": false
 }

@@ -665,9 +665,10 @@ impl ControllerInterface for Controller {
                     }
                 }
             }
-
             // finally find the optimal cuda kernel
-            // find_most_performant_kernel(trajectories_dir)?;
+            if parameters.create_stats {
+                find_most_performant_kernel(trajectories_dir)?;
+            }
         }
         Ok(())
     }
