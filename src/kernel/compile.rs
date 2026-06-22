@@ -112,11 +112,15 @@ impl CompileInterface for Compile {
         work_item: WorkItem,
         write: bool,
     ) -> Result<String, Box<dyn std::error::Error>> {
+        // restore working dir
+        env::set_current_dir(work_item.working_dir)?;
+
         let mut kernel_code = String::new();
         let dir = work_item.target_dir.clone();
         log::debug!("[cuda_kernel_rw] directory {}", dir);
-        // create output directory
+        // create output directory (incase its not created)
         fs::create_dir_all(format!("{}/build", dir))?;
+
         match work_item.kernel_name {
             Some(name) => {
                 let file = format!("{}/{}", dir, name);
