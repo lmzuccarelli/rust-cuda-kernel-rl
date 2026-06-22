@@ -336,107 +336,149 @@ impl ControllerInterface for Controller {
                 "SIMD_operations".to_owned(),
             ];
 
-            let current_trajectory = "trajectory_10_JherU9Ei";
-            log::info!("[execute_agent_flow] trajectory   : {}", current_trajectory);
-            let &mut mut fallback = &mut false;
-            let mut plan_count = parameters.max_rollout - 1;
+            for current_trajectory in trajectories.iter() {
+                log::info!("[execute_agent_flow] trajectory   : {}", current_trajectory);
+                let &mut mut fallback = &mut false;
+                let mut plan_count = parameters.max_rollout - 1;
 
-            for step in parameters.rollout_start..parameters.max_rollout {
-                log::info!("[execute_agent_flow] current step : {}", step);
-                let local_target_dir = format!(
-                    "{}/logs/{}/{}/rl-ncu/{}/step_{}",
-                    parameters.working_dir, parameters.llm_model, item, current_trajectory, step
-                );
-                let target_dir = local_target_dir.replace("/logs/", "/out/");
-                log::info!(
-                    "[execute_agent_flow] replay buffer directory : {}",
-                    local_target_dir
-                );
-
-                let next_target_dir = format!(
-                    "{}/logs/{}/{}/rl-ncu/{}/step_{}",
-                    parameters.working_dir,
-                    parameters.llm_model,
-                    item,
-                    current_trajectory,
-                    step + 1
-                );
-                if step < parameters.max_rollout - 1 {
-                    let res = fs::create_dir_all(next_target_dir.clone());
-                    match res {
-                        Ok(_) => {
-                            log::info!(
-                                "[execute_agent_flow] created next step directory {}",
-                                next_target_dir
-                            );
-                        }
-                        Err(e) => {
-                            log::error!("[execute_agent_flow] failed to create directory {}", e);
-                            fallback = true;
-                            continue;
-                        }
-                    }
-                }
-
-                // N.B. the error handling is purposely set to "try" not break and exit the loop
-                // If there is an error the objective is to continue to the next step using the step_0 kernel
-                // Nested Ok() Err() checks have been avoided for legibility reasons
-
-                let mut payload = String::new();
-                let mut code = String::new();
-                let mut cuda_kernel_file = String::new();
-
-                // compile retry is hard coded to 2
-                'retry: for i in 0..2 {
-                    // 1. read kernel code
-                    // If for any reason the cuda kernel file cannot be read exit immediately
-                    log::info!("[execute_agent_flow] compile retry loop {}", i);
-                    let (cuda_file, kernel_code) =
-                        find_cuda_file(local_target_dir.clone(), &mut fallback)?;
-                    log::info!("[execute_agent_flow] using kernel file {}", cuda_file);
-                    payload = format!(
-                        r##"{{ "name": "{}", "working_dir": "{}", "gpu_arch": "{}" , "target_dir": "{}", "kernel_name": "{}" , "code": {:?} }}"##,
-                        item,
+                for step in parameters.rollout_start..parameters.max_rollout {
+                    log::info!("[execute_agent_flow] current step : {}", step);
+                    let local_target_dir = format!(
+                        "{}/logs/{}/{}/rl-ncu/{}/step_{}",
                         parameters.working_dir,
-                        parameters.gpu_arch,
-                        target_dir,
-                        cuda_file,
-                        kernel_code
+                        parameters.llm_model,
+                        item,
+                        current_trajectory,
+                        step
+                    );
+                    let target_dir = local_target_dir.replace("/logs/", "/out/");
+                    log::info!(
+                        "[execute_agent_flow] replay buffer directory : {}",
+                        local_target_dir
                     );
 
-                    // 2. upload kernel
-                    log::info!("[execute_agent_flow] uploading kernel {}", cuda_file);
-                    let url = format!("{}/v1/upload", parameters.compile_server_url);
-                    let upload_res = process_post_call(None, url.clone(), payload.clone()).await;
-                    match upload_res {
-                        Ok(_) => {
-                            log::info!("[execute_agent_flow] kernel uploaded successfully");
-                        }
-                        Err(e) => {
-                            log::error!("[execute_agent_flow] kernel upload error {}", e);
-                            fallback = true;
-                            continue;
+                    let next_target_dir = format!(
+                        "{}/logs/{}/{}/rl-ncu/{}/step_{}",
+                        parameters.working_dir,
+                        parameters.llm_model,
+                        item,
+                        current_trajectory,
+                        step + 1
+                    );
+                    if step < parameters.max_rollout - 1 {
+                        let res = fs::create_dir_all(next_target_dir.clone());
+                        match res {
+                            Ok(_) => {
+                                log::info!(
+                                    "[execute_agent_flow] created next step directory {}",
+                                    next_target_dir
+                                );
+                            }
+                            Err(e) => {
+                                log::error!(
+                                    "[execute_agent_flow] failed to create directory {}",
+                                    e
+                                );
+                                fallback = true;
+                                continue;
+                            }
                         }
                     }
 
-                    // 3. compile kernel
-                    log::info!("[execute_agent_flow] calling compile cuda kernel endpoint",);
-                    let url = format!("{}/v1/compile", parameters.compile_server_url);
-                    let file_name = format!("{}/compile.txt", local_target_dir);
-                    let res = process_post_call(Some(file_name), url, payload.clone()).await;
-                    match res {
+                    // N.B. the error handling is purposely set to "try" not break and exit the loop
+                    // If there is an error the objective is to continue to the next step using the step_0 kernel
+                    // Nested Ok() Err() checks have been avoided for legibility reasons
+
+                    let mut payload = String::new();
+                    let mut code = String::new();
+                    let mut cuda_kernel_file = String::new();
+
+                    // compile retry is hard coded to 2
+                    'retry: for i in 0..2 {
+                        // 1. read kernel code
+                        // If for any reason the cuda kernel file cannot be read exit immediately
+                        log::info!("[execute_agent_flow] compile retry loop {}", i);
+                        let (cuda_file, kernel_code) =
+                            find_cuda_file(local_target_dir.clone(), &mut fallback)?;
+                        log::info!("[execute_agent_flow] using kernel file {}", cuda_file);
+                        payload = format!(
+                            r##"{{ "name": "{}", "working_dir": "{}", "gpu_arch": "{}" , "target_dir": "{}", "kernel_name": "{}" , "code": {:?} }}"##,
+                            item,
+                            parameters.working_dir,
+                            parameters.gpu_arch,
+                            target_dir,
+                            cuda_file,
+                            kernel_code
+                        );
+
+                        // 2. upload kernel
+                        log::info!("[execute_agent_flow] uploading kernel {}", cuda_file);
+                        let url = format!("{}/v1/upload", parameters.compile_server_url);
+                        let upload_res =
+                            process_post_call(None, url.clone(), payload.clone()).await;
+                        match upload_res {
+                            Ok(_) => {
+                                log::info!("[execute_agent_flow] kernel uploaded successfully");
+                            }
+                            Err(e) => {
+                                log::error!("[execute_agent_flow] kernel upload error {}", e);
+                                fallback = true;
+                                continue;
+                            }
+                        }
+
+                        // 3. compile kernel
+                        log::info!("[execute_agent_flow] calling compile cuda kernel endpoint",);
+                        let url = format!("{}/v1/compile", parameters.compile_server_url);
+                        let file_name = format!("{}/compile.txt", local_target_dir);
+                        let res = process_post_call(Some(file_name), url, payload.clone()).await;
+                        match res {
+                            Ok(_) => {
+                                log::info!(
+                                    "[execute_agent_flow] compile kernel completed successfully"
+                                );
+                                code = kernel_code;
+                                cuda_kernel_file = cuda_file;
+                                // compilation succeeded move on to the next workflow step
+                                break 'retry;
+                            }
+                            Err(e) => {
+                                log::error!("[execute_agent_flow] compile failed {}", e);
+                                let technique = cuda_file
+                                    .clone()
+                                    .split(".cu")
+                                    .next()
+                                    .unwrap_or("none")
+                                    .to_owned();
+
+                                if !vec_error_techniques.contains(&technique) {
+                                    vec_error_techniques.push(technique);
+                                }
+                                fallback = true;
+                                continue;
+                            }
+                        }
+                    }
+
+                    // the compile failed after 2 re-tries
+                    if code.is_empty() {
+                        continue;
+                    }
+
+                    // 4. execute kernel
+                    log::info!("[execute_agent_flow] calling execute cuda kernel endpoint");
+                    let url = format!("{}/v1/execute", parameters.gpu_server_url);
+                    let file_name = format!("{}/execute.txt", local_target_dir);
+                    let exec_res = process_post_call(Some(file_name), url, payload.clone()).await;
+                    match exec_res {
                         Ok(_) => {
                             log::info!(
-                                "[execute_agent_flow] compile kernel completed successfully"
+                                "[execute_agent_flow] kernel execute completed successfully"
                             );
-                            code = kernel_code;
-                            cuda_kernel_file = cuda_file;
-                            // compilation succeeded move on to the next workflow step
-                            break 'retry;
                         }
                         Err(e) => {
-                            log::error!("[execute_agent_flow] compile failed {}", e);
-                            let technique = cuda_file
+                            log::error!("[execute_agent_flow] kernel execute failed {}", e);
+                            let technique = cuda_kernel_file
                                 .clone()
                                 .split(".cu")
                                 .next()
@@ -450,24 +492,42 @@ impl ControllerInterface for Controller {
                             continue;
                         }
                     }
-                }
 
-                // the compile failed after 2 re-tries
-                if code.is_empty() {
-                    continue;
-                }
+                    // 5. profile kernel
+                    log::info!("[execute_agent_flow] calling profile cuda kernel endpoint");
+                    let url = format!("{}/v1/profile", parameters.gpu_server_url);
+                    let file_name = format!("{}/profile.txt", local_target_dir);
+                    let profile_res =
+                        process_post_call(Some(file_name), url, payload.clone()).await;
+                    let ncu_report = match profile_res {
+                        Ok(profile) => profile,
+                        Err(e) => {
+                            log::error!("[execute_agent_flow] kernel profile failed {}", e);
+                            fallback = true;
+                            continue;
+                        }
+                    };
 
-                // 4. execute kernel
-                log::info!("[execute_agent_flow] calling execute cuda kernel endpoint");
-                let url = format!("{}/v1/execute", parameters.gpu_server_url);
-                let file_name = format!("{}/execute.txt", local_target_dir);
-                let exec_res = process_post_call(Some(file_name), url, payload.clone()).await;
-                match exec_res {
-                    Ok(_) => {
-                        log::info!("[execute_agent_flow] kernel execute completed successfully");
-                    }
-                    Err(e) => {
-                        log::error!("[execute_agent_flow] kernel execute failed {}", e);
+                    // 6. calculate elapsed cycles
+                    let elapsed_cycles = Profile::get_elapsed_cycles(ncu_report.clone())?;
+
+                    // 7. calculate improvement/degradation
+                    log::info!("[execute_agent_flow] elapsed cycles : {}", elapsed_cycles);
+                    let (perc, reward) =
+                        Profile::calculate_improvement(baseline_elapsed_cycles, elapsed_cycles)?;
+                    log::info!(
+                        "[execute_agent_flow] percentage improvement {}% : reward {}",
+                        perc,
+                        reward
+                    );
+                    let mut contents =
+                        format!("baseline elapsed cycles : {}\n", baseline_elapsed_cycles);
+                    contents.push_str(&format!("elapsed cycles          : {}\n", elapsed_cycles));
+                    contents.push_str(&format!("improvement             : {}%\n", perc));
+                    contents.push_str(&format!("reward                  : {}\n", reward));
+                    fs::write(format!("{}/stats.txt", local_target_dir), contents)?;
+                    if perc < -100.0 {
+                        log::warn!("[execute_agent_flow] degradation is severe");
                         let technique = cuda_kernel_file
                             .clone()
                             .split(".cu")
@@ -478,226 +538,184 @@ impl ControllerInterface for Controller {
                         if !vec_error_techniques.contains(&technique) {
                             vec_error_techniques.push(technique);
                         }
-                        fallback = true;
                         continue;
                     }
-                }
 
-                // 5. profile kernel
-                log::info!("[execute_agent_flow] calling profile cuda kernel endpoint");
-                let url = format!("{}/v1/profile", parameters.gpu_server_url);
-                let file_name = format!("{}/profile.txt", local_target_dir);
-                let profile_res = process_post_call(Some(file_name), url, payload.clone()).await;
-                let ncu_report = match profile_res {
-                    Ok(profile) => profile,
-                    Err(e) => {
-                        log::error!("[execute_agent_flow] kernel profile failed {}", e);
-                        fallback = true;
-                        continue;
-                    }
-                };
-
-                // 6. calculate elapsed cycles
-                let elapsed_cycles = Profile::get_elapsed_cycles(ncu_report.clone())?;
-
-                // 7. calculate improvement/degradation
-                log::info!("[execute_agent_flow] elapsed cycles : {}", elapsed_cycles);
-                let (perc, reward) =
-                    Profile::calculate_improvement(baseline_elapsed_cycles, elapsed_cycles)?;
-                log::info!(
-                    "[execute_agent_flow] percentage improvement {}% : reward {}",
-                    perc,
-                    reward
-                );
-                let mut contents =
-                    format!("baseline elapsed cycles : {}\n", baseline_elapsed_cycles);
-                contents.push_str(&format!("elapsed cycles          : {}\n", elapsed_cycles));
-                contents.push_str(&format!("improvement             : {}%\n", perc));
-                contents.push_str(&format!("reward                  : {}\n", reward));
-                fs::write(format!("{}/stats.txt", local_target_dir), contents)?;
-                if perc < -100.0 {
-                    log::warn!("[execute_agent_flow] degradation is severe");
-                    let technique = cuda_kernel_file
-                        .clone()
-                        .split(".cu")
-                        .next()
-                        .unwrap_or("none")
-                        .to_owned();
-
-                    if !vec_error_techniques.contains(&technique) {
-                        vec_error_techniques.push(technique);
-                    }
-                    continue;
-                }
-
-                // 8. get new state from profile
-                // get new state prompt based on the ncu_report
-                // if previous step fails it will use the baseline ncu_report
-                log::info!("[execute_agent_flow] calling llm (state)");
-                let state_prompt =
-                    get_profile_prompt(code.clone(), ncu_report.clone()).replace("\n", "");
-                // call the llm endpoint
-                let url = format!(
-                    "{}/v1/prompt/{}",
-                    parameters.llm_server_url,
-                    parameters.llm_agent.to_string().to_lowercase()
-                );
-                let file_name = format!("{}/llm_state_response.txt", local_target_dir);
-                let state_res = process_post_call(Some(file_name), url, state_prompt).await;
-                let state = match state_res {
-                    Ok(contents) => {
-                        log::info!("[execute_agent_flow] calling llm state completed successfully");
-                        contents
-                    }
-                    Err(e) => {
-                        log::error!("[execute_agent_flow] calling llm state failed {}", e);
-                        continue;
-                    }
-                };
-
-                // rate limit
-                thread::sleep(Duration::from_secs(5));
-
-                // 9. get optimization plan
-                // get the top_n matching optimizations in json format from the llm
-                let avail_opt = get_available_optimizations();
-                let prompt_op =
-                    get_optimization_plan(plan_count, state.clone(), code.clone(), avail_opt);
-                // call llm for optimization plan
-                log::info!("[execute_agent_flow] calling llm (optimization plan)");
-                let url = format!(
-                    "{}/v1/prompt/{}",
-                    parameters.llm_server_url,
-                    parameters.llm_agent.to_string().to_lowercase()
-                );
-                let file_name = format!("{}/optimization-plan.json", local_target_dir);
-                let json_plan_res = process_post_call(Some(file_name), url, prompt_op).await;
-                let json_plan = match json_plan_res {
-                    Ok(contents) => {
-                        log::info!(
-                            "[execute_agent_flow] calling llm json optimization plan completed successfully"
-                        );
-                        contents
-                    }
-                    Err(e) => {
-                        log::error!(
-                            "[execute_agent_flow] calling llm json optimization plan failed {}",
-                            e
-                        );
-                        continue;
-                    }
-                };
-                // parse the optimization plan
-                let json_plan_updated = json_plan.replace("```json", "").replace("```", "");
-                let plans_res = serde_json::from_str::<Vec<OptimizationPlan>>(&json_plan_updated);
-                let plans = match plans_res {
-                    Ok(vec_plans) => {
-                        log::info!(
-                            "[execute_agent_flow] parsing optimization plan completed successfully"
-                        );
-                        vec_plans
-                    }
-                    Err(e) => {
-                        log::error!(
-                            "[execute_agent_flow] parsing optimization plan failed {}",
-                            e
-                        );
-                        continue;
-                    }
-                };
-
-                // before building the complex prompt for the next step
-                // check if we have reached the max_rollout value
-                if step == parameters.max_rollout - 1 {
-                    log::info!(
-                        "[execute_agent_flow] max_rollout reached : exiting flow gracefully"
+                    // 8. get new state from profile
+                    // get new state prompt based on the ncu_report
+                    // if previous step fails it will use the baseline ncu_report
+                    log::info!("[execute_agent_flow] calling llm (state)");
+                    let state_prompt =
+                        get_profile_prompt(code.clone(), ncu_report.clone()).replace("\n", "");
+                    // call the llm endpoint
+                    let url = format!(
+                        "{}/v1/prompt/{}",
+                        parameters.llm_server_url,
+                        parameters.llm_agent.to_string().to_lowercase()
                     );
-                    break;
-                }
+                    let file_name = format!("{}/llm_state_response.txt", local_target_dir);
+                    let state_res = process_post_call(Some(file_name), url, state_prompt).await;
+                    let state = match state_res {
+                        Ok(contents) => {
+                            log::info!(
+                                "[execute_agent_flow] calling llm state completed successfully"
+                            );
+                            contents
+                        }
+                        Err(e) => {
+                            log::error!("[execute_agent_flow] calling llm state failed {}", e);
+                            continue;
+                        }
+                    };
 
-                // 10. create complex prompt and execute for the next step
-                // if this fails it due to regex (this will break our loop)
-                let category = Profile::get_category(state.clone())?;
-                // pick the weighted plan should not fail (unless WeightedIndex fails - severe)
-                let plan = pick_weighted(plans.clone(), vec_error_techniques.clone())?;
-                log::warn!("[execute_agent_flow] selected plan {} ", plan.technique);
-                log::warn!("[execute_agent_flow] cuda file     {} ", cuda_kernel_file);
-                log::warn!(
-                    "[execute_agent_flow] exclude plans {:?}",
-                    vec_error_techniques
-                );
-                let state_category = get_performance_state_category();
-                // if file read files this should break the loop
-                let combined = get_combined(state_category)?;
-                let task_prompt = get_task_generate_code_prompt(
-                    plan.technique.clone(),
-                    category.to_owned(),
-                    plan.description,
-                    ncu_report.to_owned(),
-                    code.to_owned(),
-                    combined,
-                );
+                    // rate limit
+                    thread::sleep(Duration::from_secs(5));
 
-                let wr_res = fs::write(
-                    format!("{}/{}.prompt", next_target_dir, plan.technique),
-                    task_prompt.clone(),
-                );
-                match wr_res {
-                    Ok(_) => {
+                    // 9. get optimization plan
+                    // get the top_n matching optimizations in json format from the llm
+                    let avail_opt = get_available_optimizations();
+                    let prompt_op =
+                        get_optimization_plan(plan_count, state.clone(), code.clone(), avail_opt);
+                    // call llm for optimization plan
+                    log::info!("[execute_agent_flow] calling llm (optimization plan)");
+                    let url = format!(
+                        "{}/v1/prompt/{}",
+                        parameters.llm_server_url,
+                        parameters.llm_agent.to_string().to_lowercase()
+                    );
+                    let file_name = format!("{}/optimization-plan.json", local_target_dir);
+                    let json_plan_res = process_post_call(Some(file_name), url, prompt_op).await;
+                    let json_plan = match json_plan_res {
+                        Ok(contents) => {
+                            log::info!(
+                                "[execute_agent_flow] calling llm json optimization plan completed successfully"
+                            );
+                            contents
+                        }
+                        Err(e) => {
+                            log::error!(
+                                "[execute_agent_flow] calling llm json optimization plan failed {}",
+                                e
+                            );
+                            continue;
+                        }
+                    };
+                    // parse the optimization plan
+                    let json_plan_updated = json_plan.replace("```json", "").replace("```", "");
+                    let plans_res =
+                        serde_json::from_str::<Vec<OptimizationPlan>>(&json_plan_updated);
+                    let plans = match plans_res {
+                        Ok(vec_plans) => {
+                            log::info!(
+                                "[execute_agent_flow] parsing optimization plan completed successfully"
+                            );
+                            vec_plans
+                        }
+                        Err(e) => {
+                            log::error!(
+                                "[execute_agent_flow] parsing optimization plan failed {}",
+                                e
+                            );
+                            continue;
+                        }
+                    };
+
+                    // before building the complex prompt for the next step
+                    // check if we have reached the max_rollout value
+                    if step == parameters.max_rollout - 1 {
                         log::info!(
-                            "[execute_agent_flow] saved {} prompt to disk ",
-                            plan.technique
+                            "[execute_agent_flow] max_rollout reached : exiting flow gracefully"
                         );
+                        break;
                     }
-                    Err(e) => {
-                        log::error!("[execute_agent_flow] failed to save prompt {}", e);
-                        continue;
-                    }
-                };
 
-                log::info!("[execute_agent_flow] calling llm (task generate code)");
-                let url = format!(
-                    "{}/v1/prompt/{}",
-                    parameters.llm_server_url,
-                    parameters.llm_agent.to_string().to_lowercase()
-                );
+                    // 10. create complex prompt and execute for the next step
+                    // if this fails it due to regex (this will break our loop)
+                    let category = Profile::get_category(state.clone())?;
+                    // pick the weighted plan should not fail (unless WeightedIndex fails - severe)
+                    let plan = pick_weighted(plans.clone(), vec_error_techniques.clone())?;
+                    log::warn!("[execute_agent_flow] selected plan {} ", plan.technique);
+                    log::warn!("[execute_agent_flow] cuda file     {} ", cuda_kernel_file);
+                    log::warn!(
+                        "[execute_agent_flow] exclude plans {:?}",
+                        vec_error_techniques
+                    );
+                    let state_category = get_performance_state_category();
+                    // if file read files this should break the loop
+                    let combined = get_combined(state_category)?;
+                    let task_prompt = get_task_generate_code_prompt(
+                        plan.technique.clone(),
+                        category.to_owned(),
+                        plan.description,
+                        ncu_report.to_owned(),
+                        code.to_owned(),
+                        combined,
+                    );
 
-                // rate limit
-                thread::sleep(Duration::from_secs(5));
+                    let wr_res = fs::write(
+                        format!("{}/{}.prompt", next_target_dir, plan.technique),
+                        task_prompt.clone(),
+                    );
+                    match wr_res {
+                        Ok(_) => {
+                            log::info!(
+                                "[execute_agent_flow] saved {} prompt to disk ",
+                                plan.technique
+                            );
+                        }
+                        Err(e) => {
+                            log::error!("[execute_agent_flow] failed to save prompt {}", e);
+                            continue;
+                        }
+                    };
 
-                let file_name = format!("{}/{}_llm_response.txt", next_target_dir, plan.technique);
-                let contents_res = process_post_call(Some(file_name), url, task_prompt).await;
-                match contents_res {
-                    Ok(contents) => {
-                        // extract code
-                        let code = extract_code(contents)?;
-                        let wr_res =
-                            fs::write(format!("{}/{}.cu", next_target_dir, plan.technique), code);
-                        match wr_res {
-                            Ok(_) => {
-                                log::info!(
-                                    "[execute_agent_flow] saved cuda kernel {}",
-                                    plan.technique
-                                );
-                                plan_count -= 1;
-                                // plan_count starts at max_rollout -1 and then decrements by one until we reach 4
-                                if plan_count <= 4 {
-                                    plan_count = 4;
+                    log::info!("[execute_agent_flow] calling llm (task generate code)");
+                    let url = format!(
+                        "{}/v1/prompt/{}",
+                        parameters.llm_server_url,
+                        parameters.llm_agent.to_string().to_lowercase()
+                    );
+
+                    // rate limit
+                    thread::sleep(Duration::from_secs(5));
+
+                    let file_name =
+                        format!("{}/{}_llm_response.txt", next_target_dir, plan.technique);
+                    let contents_res = process_post_call(Some(file_name), url, task_prompt).await;
+                    match contents_res {
+                        Ok(contents) => {
+                            // extract code
+                            let code = extract_code(contents)?;
+                            let wr_res = fs::write(
+                                format!("{}/{}.cu", next_target_dir, plan.technique),
+                                code,
+                            );
+                            match wr_res {
+                                Ok(_) => {
+                                    log::info!(
+                                        "[execute_agent_flow] saved cuda kernel {}",
+                                        plan.technique
+                                    );
+                                    plan_count -= 1;
+                                    // plan_count starts at max_rollout -1 and then decrements by one until we reach 4
+                                    if plan_count <= 4 {
+                                        plan_count = 4;
+                                    }
+                                }
+                                Err(e) => {
+                                    log::error!(
+                                        "[execute_agent_flow] failed to save cuda kernel {}",
+                                        e
+                                    );
                                 }
                             }
-                            Err(e) => {
-                                log::error!(
-                                    "[execute_agent_flow] failed to save cuda kernel {}",
-                                    e
-                                );
-                            }
                         }
-                    }
-                    Err(e) => {
-                        log::error!(
-                            "[execute_agent_flow] process_post_call call generate code failed {}",
-                            e
-                        );
+                        Err(e) => {
+                            log::error!(
+                                "[execute_agent_flow] process_post_call call generate code failed {}",
+                                e
+                            );
+                        }
                     }
                 }
             }
