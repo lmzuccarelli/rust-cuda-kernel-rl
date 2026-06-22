@@ -245,8 +245,10 @@ pub async fn extract_code_from_call(
     Ok(())
 }
 
-#[allow(unused)]
-pub fn get_trajectories(base_dir: String) -> Result<Vec<String>, Box<dyn std::error::Error>> {
+pub fn get_trajectories(
+    base_dir: String,
+    exclude_trajectories: Vec<String>,
+) -> Result<Vec<String>, Box<dyn std::error::Error>> {
     let mut vec_trajectories = vec![];
     let re = Regex::new("(trajectory_[0-9]+_[0-9a-zA-Z_-]*)$")?;
     for e in WalkDir::new(base_dir) {
@@ -255,7 +257,10 @@ pub fn get_trajectories(base_dir: String) -> Result<Vec<String>, Box<dyn std::er
                 if obj.path().is_dir() {
                     let file = obj.path().to_string_lossy();
                     for cap in re.captures_iter(&file) {
-                        vec_trajectories.push(cap[1].to_string());
+                        let trajectory = cap[1].to_string();
+                        if !exclude_trajectories.contains(&trajectory) {
+                            vec_trajectories.push(cap[1].to_string());
+                        }
                     }
                 }
             }

@@ -18,6 +18,14 @@
   "flow_control": 0,
   "gpu_arch": 86,
   "create_stats": true,
-  "use_error_vec": false
+  "use_error_vec": false,
+  "exclude_trajectories": [
+    "trajectory_1_9d_hrnnm",
+    "trajectory_2_pHS1HYOl",
+    "trajectory_3_xzdUlCN2",
+    "trajectory_4_kRmwsXTK",
+    "trajectory_5_M8XNlhtI",
+    "trajectory_6_xSHPxH5P"
+  ]
 
 }

@@ -23,6 +23,7 @@ pub struct Parameters {
     pub flow_control: u8,
     pub create_stats: bool,
     pub use_error_vec: bool,
+    pub exclude_trajectories: Vec<String>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
