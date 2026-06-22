@@ -3,4 +3,5 @@
 /scripts
 /logs
 /profile
+/staging
 replay-buffer.tar.gz
