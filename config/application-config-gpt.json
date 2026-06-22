@@ -9,13 +9,13 @@
   ],
   "working_dir": "/home/lzuccarelli/Projects/rust-cuda-kernel-rl",
   "llm_agent": "Api",
-  "llm_model": "zai-glm-4.7",
-  "controller_mode": "Baseline",
+  "llm_model": "gpt-oss-120b",
+  "controller_mode": "Agent",
   "token_file": "/home/lzuccarelli/.cerebras/token",
   "openapi_url": "https://api.cerebras.ai/v1/chat/completions",
   "max_rollout": 10,
-  "rollout_start": 0,
-  "flow_control": 127,
+  "rollout_start": 5,
+  "flow_control": 0,
   "gpu_arch": 86,
-  "create_stats": false
+  "create_stats": true
 }
