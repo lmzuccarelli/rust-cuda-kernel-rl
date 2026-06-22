@@ -154,6 +154,13 @@ pub fn pick_weighted(
     mut plans: Vec<OptimizationPlan>,
     exclude: Vec<String>,
 ) -> Result<OptimizationPlan, Box<dyn std::error::Error>> {
+    // TODO: This was set due to high reward values
+    // it could change from kernel to kernel
+    let mut pick = OptimizationPlan {
+        technique: "memory_coalescing_optimization".to_string(),
+        relevance_score: 0.9,
+        description: "Align access patterns to cache lines".to_string(),
+    };
     // first exclude plans that we know don't work
     plans.retain(|x| !exclude.contains(&x.technique));
 
@@ -162,10 +169,12 @@ pub fn pick_weighted(
         .iter()
         .map(|x| x.relevance_score.powi(3))
         .collect::<Vec<f32>>();
-    log::debug!("[pick_weighted] {:?}", weights);
-    let dist = WeightedIndex::new(weights)?;
-    let mut rng = rand::rng();
-    let pick = plans[dist.sample(&mut rng)].clone();
+    if weights.len() > 0 {
+        log::debug!("[pick_weighted] {:?}", weights);
+        let dist = WeightedIndex::new(weights)?;
+        let mut rng = rand::rng();
+        pick = plans[dist.sample(&mut rng)].clone();
+    }
     Ok(pick)
 }
 
@@ -230,7 +239,7 @@ pub async fn extract_code_from_call(
     let code = extract_code(contents)?;
     fs::write(kernel_file_name, code)?;
     log::info!("[extract_code_from_call] delaying thread (limit requests)");
-    thread::sleep(Duration::from_secs(60));
+    thread::sleep(Duration::from_secs(5));
     Ok(())
 }
 

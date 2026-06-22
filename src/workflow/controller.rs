@@ -323,16 +323,20 @@ impl ControllerInterface for Controller {
             let trajectories = get_trajectories(trajectories_dir.clone())?;
             log::debug!("[execute_agent_flow] trajectories {:#?}", trajectories);
 
-            // from previosu execution we know these kernel optimization techniques are
-            // problematic
+            // from previous execution we know these kernel optimization techniques are
+            // problematic (compilation, execution and/or profiling)
             let mut vec_error_techniques: Vec<String> = vec![
                 "prefetching_strategies".to_owned(),
                 "tensor_core_utilization".to_owned(),
                 "thread_coarsening".to_owned(),
                 "instruction_scheduling_optimization".to_owned(),
                 "register_pressure_reduction".to_owned(),
+                "shared_memory_tiling".to_owned(),
+                "memory_compute_overlap".to_owned(),
+                "SIMD_operations".to_owned(),
             ];
-            let current_trajectory = "trajectory_9_xuXxpkzW";
+
+            let current_trajectory = "trajectory_10_JherU9Ei";
             log::info!("[execute_agent_flow] trajectory   : {}", current_trajectory);
             let &mut mut fallback = &mut false;
             let mut plan_count = parameters.max_rollout - 1;
@@ -432,14 +436,16 @@ impl ControllerInterface for Controller {
                         }
                         Err(e) => {
                             log::error!("[execute_agent_flow] compile failed {}", e);
-                            vec_error_techniques.push(
-                                cuda_file
-                                    .clone()
-                                    .split(".cu")
-                                    .next()
-                                    .unwrap_or("none")
-                                    .to_owned(),
-                            );
+                            let technique = cuda_file
+                                .clone()
+                                .split(".cu")
+                                .next()
+                                .unwrap_or("none")
+                                .to_owned();
+
+                            if !vec_error_techniques.contains(&technique) {
+                                vec_error_techniques.push(technique);
+                            }
                             fallback = true;
                             continue;
                         }
@@ -462,6 +468,16 @@ impl ControllerInterface for Controller {
                     }
                     Err(e) => {
                         log::error!("[execute_agent_flow] kernel execute failed {}", e);
+                        let technique = cuda_kernel_file
+                            .clone()
+                            .split(".cu")
+                            .next()
+                            .unwrap_or("none")
+                            .to_owned();
+
+                        if !vec_error_techniques.contains(&technique) {
+                            vec_error_techniques.push(technique);
+                        }
                         fallback = true;
                         continue;
                     }
@@ -501,15 +517,16 @@ impl ControllerInterface for Controller {
                 fs::write(format!("{}/stats.txt", local_target_dir), contents)?;
                 if perc < -100.0 {
                     log::warn!("[execute_agent_flow] degradation is severe");
-                    vec_error_techniques.push(
-                        cuda_kernel_file
-                            .clone()
-                            .split(".cu")
-                            .next()
-                            .unwrap_or("none")
-                            .to_owned(),
-                    );
+                    let technique = cuda_kernel_file
+                        .clone()
+                        .split(".cu")
+                        .next()
+                        .unwrap_or("none")
+                        .to_owned();
 
+                    if !vec_error_techniques.contains(&technique) {
+                        vec_error_techniques.push(technique);
+                    }
                     continue;
                 }
 
@@ -539,7 +556,7 @@ impl ControllerInterface for Controller {
                 };
 
                 // rate limit
-                thread::sleep(Duration::from_secs(30));
+                thread::sleep(Duration::from_secs(5));
 
                 // 9. get optimization plan
                 // get the top_n matching optimizations in json format from the llm
@@ -646,7 +663,7 @@ impl ControllerInterface for Controller {
                 );
 
                 // rate limit
-                thread::sleep(Duration::from_secs(30));
+                thread::sleep(Duration::from_secs(5));
 
                 let file_name = format!("{}/{}_llm_response.txt", next_target_dir, plan.technique);
                 let contents_res = process_post_call(Some(file_name), url, task_prompt).await;
