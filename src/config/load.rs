@@ -22,6 +22,7 @@ pub struct Parameters {
     pub rollout_start: u8,
     pub flow_control: u8,
     pub create_stats: bool,
+    pub use_error_vec: bool,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]

@@ -14,8 +14,11 @@
   "token_file": "/home/lzuccarelli/.cerebras/token",
   "openapi_url": "https://api.cerebras.ai/v1/chat/completions",
   "max_rollout": 10,
-  "rollout_start": 5,
+  "rollout_start": 0,
   "flow_control": 0,
   "gpu_arch": 86,
-  "create_stats": true
+  "create_stats": false,
+  "use_error_vec": false
+
+
 }

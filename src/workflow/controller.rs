@@ -325,16 +325,23 @@ impl ControllerInterface for Controller {
 
             // from previous execution we know these kernel optimization techniques are
             // problematic (compilation, execution and/or profiling)
-            let mut vec_error_techniques: Vec<String> = vec![
-                "prefetching_strategies".to_owned(),
-                "tensor_core_utilization".to_owned(),
-                "thread_coarsening".to_owned(),
-                "instruction_scheduling_optimization".to_owned(),
-                "register_pressure_reduction".to_owned(),
-                "shared_memory_tiling".to_owned(),
-                "memory_compute_overlap".to_owned(),
-                "SIMD_operations".to_owned(),
-            ];
+            let mut vec_error_techniques = match parameters.use_error_vec {
+                true => {
+                    vec![
+                        "prefetching_strategies".to_owned(),
+                        "tensor_core_utilization".to_owned(),
+                        "thread_coarsening".to_owned(),
+                        "instruction_scheduling_optimization".to_owned(),
+                        "register_pressure_reduction".to_owned(),
+                        "shared_memory_tiling".to_owned(),
+                        "memory_compute_overlap".to_owned(),
+                        "SIMD_operations".to_owned(),
+                    ]
+                }
+                false => {
+                    vec![]
+                }
+            };
 
             for current_trajectory in trajectories.iter() {
                 log::info!("[execute_agent_flow] trajectory   : {}", current_trajectory);
