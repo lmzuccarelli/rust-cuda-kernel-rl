@@ -329,8 +329,10 @@ impl ControllerInterface for Controller {
                 "prefetching_strategies".to_owned(),
                 "tensor_core_utilization".to_owned(),
                 "thread_coarsening".to_owned(),
+                "instruction_scheduling_optimization".to_owned(),
+                "register_pressure_reduction".to_owned(),
             ];
-            let current_trajectory = "trajectory_2_K19GXpZk";
+            let current_trajectory = "trajectory_9_xuXxpkzW";
             log::info!("[execute_agent_flow] trajectory   : {}", current_trajectory);
             let &mut mut fallback = &mut false;
             let mut plan_count = parameters.max_rollout - 1;
@@ -499,6 +501,15 @@ impl ControllerInterface for Controller {
                 fs::write(format!("{}/stats.txt", local_target_dir), contents)?;
                 if perc < -100.0 {
                     log::warn!("[execute_agent_flow] degradation is severe");
+                    vec_error_techniques.push(
+                        cuda_kernel_file
+                            .clone()
+                            .split(".cu")
+                            .next()
+                            .unwrap_or("none")
+                            .to_owned(),
+                    );
+
                     continue;
                 }
 
@@ -766,14 +777,14 @@ mod tests {
         let (cuda_file, cuda_kernel) = find_cuda_file(base_dir.clone(), &mut false)?;
         println!("[run] cuda kernel file {}", cuda_file);
         println!("[run] cuda kernel len {}", cuda_kernel.len());
-        let updated = cuda_kernel.replace("\u{a0}", " ").replace("\u{20}", " ");
+        //let updated = cuda_kernel.chars().filter(|c| c.is_ascii()).collect();
 
         let payload = format!(
             r##"{{ "name": "{}", "working_dir": "{}", "gpu_arch": "{}" , "target_dir": "{}", "kernel_name": "{}" , "code": {:?} }}"##,
-            item, parameters.working_dir, parameters.gpu_arch, base_dir, cuda_file, updated
+            item, parameters.working_dir, parameters.gpu_arch, base_dir, cuda_file, cuda_kernel
         );
 
-        let work_item_res = serde_json::from_slice::<WorkItem>(&payload.as_bytes())?;
+        let work_item_res = serde_json::from_slice::<WorkItem>(payload.as_bytes())?;
         println!("[run] work items {:?}", work_item_res);
 
         //let cuda_kernel = fs::read_to_string("tests/tensor_core_utilization.cu")?;

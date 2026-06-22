@@ -579,6 +579,7 @@ CRITICAL REQUIREMENTS:
 2. Generate COMPLETE, COMPILABLE CUDA code.
 3. Include ALL necessary components:
    - #include statements (cuda_fp16.h, cuda_runtime.h, etc.)
+   - #include<stdint.h> when using uintptr_t
    - #define constants - N.B. DEFINE ALL CONSTANTS BEFORE USING THEM
    - Complete __global__ kernel function with proper signature
    - Ensure the keyword 'void' always precedes the kernel name
