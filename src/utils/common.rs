@@ -173,7 +173,10 @@ pub fn pick_weighted(
         log::debug!("[pick_weighted] {:?}", weights);
         let dist = WeightedIndex::new(weights)?;
         let mut rng = rand::rng();
-        pick = plans[dist.sample(&mut rng)].clone();
+        let index = dist.sample(&mut rng);
+        log::debug!("[pick_weighted] using index {}", index);
+        //pick = plans[index].clone();
+        pick = plans[0].clone();
     } else {
         log::debug!("[pick_weighted] using default {}", pick.technique);
     }

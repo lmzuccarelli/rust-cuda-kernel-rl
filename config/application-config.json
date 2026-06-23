@@ -19,7 +19,7 @@
   "gpu_arch": 86,
   "create_stats": true,
   "use_error_vec": false,
-  "acceptance_thereshold": 0.92,
+  "acceptance_threshold": 0.92,
   "exclude_trajectories": [
     "trajectory_1_9d_hrnnm",
     "trajectory_2_pHS1HYOl",

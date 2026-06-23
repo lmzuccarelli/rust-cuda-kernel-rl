@@ -20,5 +20,5 @@
   "create_stats": true,
   "use_error_vec": false,
   "acceptance_threshold": 0.90,
-  "exclude_trajectories": ["all"]
+  "exclude_trajectories": []
 }
