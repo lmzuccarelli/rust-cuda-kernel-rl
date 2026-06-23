@@ -131,12 +131,11 @@ pub fn find_most_performant_kernel(base_dir: String) -> Result<(), Box<dyn std::
     let vec_parts: Vec<&str> = kernel_path.split("/").collect();
     let updated_path = vec_parts[..vec_parts.len() - 1].join("/").to_string();
     let (kernel_name, kernel_contents) = find_cuda_file(updated_path.clone(), &mut false)?;
-    log::info!(
+    let result_msg = format!(
         "[find_most_performant_kernel] found kernel {} in path {} with reward {}",
-        kernel_name,
-        updated_path,
-        max_reward
+        kernel_name, updated_path, max_reward
     );
+    log::info!("{result_msg}");
     let write_dir: Vec<&str> = updated_path.split("rl-ncu").collect();
     fs::write(
         format!("{}/rl-ncu/final_rl_cuda_perf.cu", write_dir[0]),
@@ -147,6 +146,7 @@ pub fn find_most_performant_kernel(base_dir: String) -> Result<(), Box<dyn std::
         // exclude trailing ","
         &reward_values[0..reward_values.len() - 1],
     )?;
+    fs::write(format!("{}/rl-ncu/results.txt", write_dir[0]), result_msg)?;
     Ok(())
 }
 

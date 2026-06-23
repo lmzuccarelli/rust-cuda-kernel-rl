@@ -466,10 +466,30 @@ impl ControllerInterface for Controller {
                     let file_name = format!("{}/execute.txt", local_target_dir);
                     let exec_res = process_post_call(Some(file_name), url, payload.clone()).await;
                     match exec_res {
-                        Ok(_) => {
-                            log::info!(
-                                "[execute_agent_flow] kernel execute completed successfully"
-                            );
+                        Ok(exec) => {
+                            if exec.contains("passed") {
+                                log::info!(
+                                    "[execute_agent_flow] kernel execute completed successfully"
+                                );
+                            } else {
+                                log::error!(
+                                    "[execute_agent_flow] kernel execute response 'failed'"
+                                );
+                                if parameters.use_error_vec {
+                                    let technique = cuda_kernel_file
+                                        .clone()
+                                        .split(".cu")
+                                        .next()
+                                        .unwrap_or("none")
+                                        .to_owned();
+
+                                    if !vec_error_techniques.contains(&technique) {
+                                        vec_error_techniques.push(technique);
+                                    }
+                                }
+                                fallback = true;
+                                continue;
+                            }
                         }
                         Err(e) => {
                             log::error!("[execute_agent_flow] kernel execute failed {}", e);
@@ -849,10 +869,10 @@ mod tests {
             }
         }
 
-        let vec_trajectories = get_trajectories(format!(
-            "{}/logs/{}/{}/rl-ncu",
-            parameters.working_dir, model, item
-        ))?;
+        let vec_trajectories = get_trajectories(
+            format!("{}/logs/{}/{}/rl-ncu", parameters.working_dir, model, item),
+            vec![],
+        )?;
         println!("{:?}", vec_trajectories);
 
         find_most_performant_kernel(format!(
