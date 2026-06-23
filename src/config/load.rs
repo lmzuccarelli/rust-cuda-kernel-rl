@@ -24,6 +24,7 @@ pub struct Parameters {
     pub create_stats: bool,
     pub use_error_vec: bool,
     pub exclude_trajectories: Vec<String>,
+    pub acceptance_threshold: f64,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]

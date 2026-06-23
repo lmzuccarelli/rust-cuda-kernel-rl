@@ -566,6 +566,14 @@ impl ControllerInterface for Controller {
                         continue;
                     }
 
+                    // check acceptance_threshold
+                    if reward >= parameters.acceptance_threshold {
+                        // no need to continue
+                        // we have got the level of optimization to be better or equal to
+                        // the acceptance_threshold criteria
+                        break;
+                    }
+
                     // 8. get new state from profile
                     // get new state prompt based on the ncu_report
                     // if previous step fails it will use the baseline ncu_report
