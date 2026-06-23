@@ -130,7 +130,8 @@ pub fn find_most_performant_kernel(base_dir: String) -> Result<(), Box<dyn std::
     }
     let vec_parts: Vec<&str> = kernel_path.split("/").collect();
     let updated_path = vec_parts[..vec_parts.len() - 1].join("/").to_string();
-    let (kernel_name, kernel_contents) = find_cuda_file(updated_path.clone(), &mut false)?;
+    let (kernel_name, kernel_contents) =
+        find_cuda_file(updated_path.clone(), "".to_string(), &mut false)?;
     let result_msg = format!(
         "[find_most_performant_kernel] found kernel {} in path {} with reward {}",
         kernel_name, updated_path, max_reward
@@ -185,6 +186,7 @@ pub fn pick_weighted(
 
 pub fn find_cuda_file(
     dir: String,
+    fallback_kernel: String,
     fallback: &mut bool,
 ) -> Result<(String, String), Box<dyn std::error::Error>> {
     log::trace!("[find_cuda_file] fallback {}", *fallback);
@@ -212,15 +214,22 @@ pub fn find_cuda_file(
         }
     }
     if *fallback | cuda_kernel.is_empty() {
-        log::info!("[find_cuda_file] fallback to use baseline init.cu");
-        let baseline_fallback_path = dir.split("trajectory_").next().unwrap_or("");
-        let contents = fs::read_to_string(format!("{}/baseline/init.cu", baseline_fallback_path))?;
-        fs::copy(
-            format!("{}/baseline/init.cu", baseline_fallback_path),
-            format!("{}/init.cu", dir),
-        )?;
-        cuda_kernel = contents.chars().filter(|c| c.is_ascii()).collect();
-        cuda_file = "init.cu".to_string();
+        if fallback_kernel.is_empty() {
+            log::info!("[find_cuda_file] fallback to use baseline init.cu");
+            let baseline_fallback_path = dir.split("trajectory_").next().unwrap_or("");
+            let contents =
+                fs::read_to_string(format!("{}/baseline/init.cu", baseline_fallback_path))?;
+            fs::copy(
+                format!("{}/baseline/init.cu", baseline_fallback_path),
+                format!("{}/init.cu", dir),
+            )?;
+            cuda_kernel = contents.chars().filter(|c| c.is_ascii()).collect();
+            cuda_file = "init.cu".to_string();
+        } else {
+            let contents = fs::read_to_string(&fallback_kernel)?;
+            cuda_file = fallback_kernel.split("/").last().unwrap_or("").to_string();
+            cuda_kernel = contents.chars().filter(|c| c.is_ascii()).collect();
+        }
         *fallback = false;
     }
     Ok((cuda_file, cuda_kernel))

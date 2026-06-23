@@ -324,6 +324,8 @@ impl ControllerInterface for Controller {
                 parameters.exclude_trajectories.clone(),
             )?;
             log::debug!("[execute_agent_flow] trajectories {:#?}", trajectories);
+            let mut track_fallback_kernel: String = String::new();
+            let mut track_max_reward = 0.0;
 
             // from previous execution we know these kernel optimization techniques are
             // problematic (compilation, execution and/or profiling)
@@ -385,7 +387,7 @@ impl ControllerInterface for Controller {
                     }
 
                     // N.B. the error handling is purposely set to "try" not break and exit the loop
-                    // If there is an error the objective is to continue to the next step using the step_0 kernel
+                    // If there is an error the objective is to continue to the next step
                     // Nested Ok() Err() checks have been avoided for legibility reasons
 
                     let mut payload = String::new();
@@ -397,8 +399,11 @@ impl ControllerInterface for Controller {
                         // 1. read kernel code
                         // If for any reason the cuda kernel file cannot be read exit immediately
                         log::info!("[execute_agent_flow] compile retry loop {}", i);
-                        let (cuda_file, kernel_code) =
-                            find_cuda_file(local_target_dir.clone(), &mut fallback)?;
+                        let (cuda_file, kernel_code) = find_cuda_file(
+                            local_target_dir.clone(),
+                            track_fallback_kernel.clone(),
+                            &mut fallback,
+                        )?;
                         log::info!("[execute_agent_flow] using kernel file {}", cuda_file);
                         payload = format!(
                             r##"{{ "name": "{}", "working_dir": "{}", "gpu_arch": "{}" , "target_dir": "{}", "kernel_name": "{}" , "code": {:?} }}"##,
@@ -549,6 +554,16 @@ impl ControllerInterface for Controller {
                     contents.push_str(&format!("improvement             : {}%\n", perc));
                     contents.push_str(&format!("reward                  : {}\n", reward));
                     fs::write(format!("{}/stats.txt", local_target_dir), contents)?;
+                    if reward > track_max_reward {
+                        track_max_reward = reward;
+                        track_fallback_kernel =
+                            format!("{}/{}", local_target_dir, cuda_kernel_file);
+                        log::debug!(
+                            "[execute_agent_flow] setting fallback kernel to {} with path {}",
+                            cuda_kernel_file,
+                            local_target_dir
+                        );
+                    }
                     if perc < -100.0 {
                         log::warn!("[execute_agent_flow] degradation is severe");
                         if parameters.use_error_vec {
@@ -842,7 +857,8 @@ mod tests {
             "{}/logs/{}/{}/rl-ncu/trajectory_1_Po9t6Fh_/step_0",
             parameters.working_dir, model, item
         );
-        let (cuda_file, cuda_kernel) = find_cuda_file(base_dir.clone(), &mut false)?;
+        let (cuda_file, cuda_kernel) =
+            find_cuda_file(base_dir.clone(), "".to_string(), &mut false)?;
         println!("[run] cuda kernel file {}", cuda_file);
         println!("[run] cuda kernel len {}", cuda_kernel.len());
         //let updated = cuda_kernel.chars().filter(|c| c.is_ascii()).collect();
