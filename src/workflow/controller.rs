@@ -371,13 +371,13 @@ impl ControllerInterface for Controller {
                         match res {
                             Ok(_) => {
                                 log::info!(
-                                    "[execute_agent_flow] created next step directory {}",
+                                    "[execute_agent_flow] created next step directory : {}",
                                     next_target_dir
                                 );
                             }
                             Err(e) => {
                                 log::error!(
-                                    "[execute_agent_flow] failed to create directory {}",
+                                    "[execute_agent_flow] failed to create directory : {}",
                                     e
                                 );
                                 fallback = true;
@@ -393,18 +393,24 @@ impl ControllerInterface for Controller {
                     let mut payload = String::new();
                     let mut code = String::new();
                     let mut cuda_kernel_file = String::new();
+                    let mut retry_flag = false;
 
                     // compile retry is hard coded to 2
                     'retry: for i in 0..2 {
+                        if i == 1 {
+                            retry_flag = true;
+                        }
+
                         // 1. read kernel code
                         // If for any reason the cuda kernel file cannot be read exit immediately
-                        log::info!("[execute_agent_flow] compile retry loop {}", i);
+                        log::warn!("[execute_agent_flow] compile retry loop {}", i);
                         let (cuda_file, kernel_code) = find_cuda_file(
                             local_target_dir.clone(),
                             track_fallback_kernel.clone(),
                             &mut fallback,
                         )?;
-                        log::info!("[execute_agent_flow] using kernel file {}", cuda_file);
+                        log::info!("[execute_agent_flow] using kernel file : {}", cuda_file);
+                        log::info!("[execute_agent_flow] using path : {}", local_target_dir);
                         payload = format!(
                             r##"{{ "name": "{}", "working_dir": "{}", "gpu_arch": "{}" , "target_dir": "{}", "kernel_name": "{}" , "code": {:?} }}"##,
                             item,
@@ -416,7 +422,7 @@ impl ControllerInterface for Controller {
                         );
 
                         // 2. upload kernel
-                        log::info!("[execute_agent_flow] uploading kernel {}", cuda_file);
+                        log::info!("[execute_agent_flow] uploading kernel : {}", cuda_file);
                         let url = format!("{}/v1/upload", parameters.compile_server_url);
                         let upload_res =
                             process_post_call(None, url.clone(), payload.clone()).await;
@@ -443,6 +449,10 @@ impl ControllerInterface for Controller {
                                 );
                                 code = kernel_code;
                                 cuda_kernel_file = cuda_file;
+                                log::info!(
+                                    "[execute_agent_flow] setting cuda kernel : {}",
+                                    cuda_kernel_file
+                                );
                                 // compilation succeeded move on to the next workflow step
                                 break 'retry;
                             }
@@ -544,7 +554,7 @@ impl ControllerInterface for Controller {
                     let (perc, reward) =
                         Profile::calculate_improvement(baseline_elapsed_cycles, elapsed_cycles)?;
                     log::info!(
-                        "[execute_agent_flow] percentage improvement {}% : reward {}",
+                        "[execute_agent_flow] percentage improvement {} : reward {}",
                         perc,
                         reward
                     );
@@ -554,18 +564,22 @@ impl ControllerInterface for Controller {
                     contents.push_str(&format!("improvement             : {}%\n", perc));
                     contents.push_str(&format!("reward                  : {}\n", reward));
                     fs::write(format!("{}/stats.txt", local_target_dir), contents)?;
-                    if reward > track_max_reward {
+
+                    // setup fallback directory and cuda kernel if reward is higher than the
+                    // tracking_max_reward, also dont update if we have detected that the
+                    // improvement happend in the retry loop
+                    if reward > track_max_reward && !retry_flag {
                         track_max_reward = reward;
                         track_fallback_kernel =
                             format!("{}/{}", local_target_dir, cuda_kernel_file);
-                        log::debug!(
-                            "[execute_agent_flow] setting fallback kernel to {} with path {}",
+                        log::warn!(
+                            "[execute_agent_flow] setting fallback kernel to : {} with path : {}",
                             cuda_kernel_file,
                             local_target_dir
                         );
                     }
                     if perc < -100.0 {
-                        log::warn!("[execute_agent_flow] degradation is severe");
+                        log::warn!("[execute_agent_flow] degradation severe");
                         if parameters.use_error_vec {
                             let technique = cuda_kernel_file
                                 .clone()
@@ -586,6 +600,10 @@ impl ControllerInterface for Controller {
                         // no need to continue
                         // we have got the level of optimization to be better or equal to
                         // the acceptance_threshold criteria
+                        log::info!(
+                            "[execute_agent_flow] detected cuda kernel with reward > threshold {} exiting trajectories",
+                            cuda_kernel_file
+                        );
                         break;
                     }
 
@@ -679,11 +697,14 @@ impl ControllerInterface for Controller {
 
                     // 10. create complex prompt and execute for the next step
                     // if this fails it due to regex (this will break our loop)
+                    log::info!(
+                        "[execute_agent_flow] setting up for the next step ({})",
+                        step + 1
+                    );
                     let category = Profile::get_category(state.clone())?;
                     // pick the weighted plan should not fail (unless WeightedIndex fails - severe)
                     let plan = pick_weighted(plans.clone(), vec_error_techniques.clone())?;
                     log::warn!("[execute_agent_flow] selected plan {} ", plan.technique);
-                    log::warn!("[execute_agent_flow] cuda file     {} ", cuda_kernel_file);
                     log::warn!(
                         "[execute_agent_flow] exclude plans {:?}",
                         vec_error_techniques

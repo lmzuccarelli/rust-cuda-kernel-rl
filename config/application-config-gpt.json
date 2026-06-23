@@ -17,8 +17,10 @@
   "rollout_start": 0,
   "flow_control": 0,
   "gpu_arch": 86,
-  "create_stats": true,
+  "create_stats": false,
   "use_error_vec": false,
   "acceptance_threshold": 0.90,
-  "exclude_trajectories": []
+  "exclude_trajectories": [
+    "trajectory_1_Po9t6Fh_"
+  ]
 }

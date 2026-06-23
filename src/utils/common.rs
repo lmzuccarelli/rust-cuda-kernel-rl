@@ -189,10 +189,9 @@ pub fn find_cuda_file(
     fallback_kernel: String,
     fallback: &mut bool,
 ) -> Result<(String, String), Box<dyn std::error::Error>> {
-    log::trace!("[find_cuda_file] fallback {}", *fallback);
-    log::trace!("[find_cuda_file] using directory {}", dir);
     let mut cuda_kernel = String::new();
     let mut cuda_file = String::new();
+    log::debug!("[find_cuda_file] fallback {}", *fallback);
     if !*fallback {
         let files = fs::read_dir(dir.clone())?;
         for f in files {
@@ -215,7 +214,6 @@ pub fn find_cuda_file(
     }
     if *fallback | cuda_kernel.is_empty() {
         if fallback_kernel.is_empty() {
-            log::info!("[find_cuda_file] fallback to use baseline init.cu");
             let baseline_fallback_path = dir.split("trajectory_").next().unwrap_or("");
             let contents =
                 fs::read_to_string(format!("{}/baseline/init.cu", baseline_fallback_path))?;
@@ -226,6 +224,7 @@ pub fn find_cuda_file(
             cuda_kernel = contents.chars().filter(|c| c.is_ascii()).collect();
             cuda_file = "init.cu".to_string();
         } else {
+            log::debug!("[find_cuda_file] fallback using : {}", fallback_kernel);
             let contents = fs::read_to_string(&fallback_kernel)?;
             cuda_file = fallback_kernel.split("/").last().unwrap_or("").to_string();
             cuda_kernel = contents.chars().filter(|c| c.is_ascii()).collect();
@@ -241,18 +240,18 @@ pub async fn extract_code_from_call(
     url: String,
     data: String,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    log::debug!(
+    log::trace!(
         "[extract_code_from_call] prompt file name {:?}",
         prompt_file_name
     );
-    log::debug!(
+    log::trace!(
         "[extract_code_from_call] kernel file name {}",
         kernel_file_name
     );
     let contents = process_post_call(prompt_file_name, url, data).await?;
     let code = extract_code(contents)?;
     fs::write(kernel_file_name, code)?;
-    log::info!("[extract_code_from_call] delaying thread (limit requests)");
+    log::debug!("[extract_code_from_call] delaying thread (limit requests)");
     thread::sleep(Duration::from_secs(5));
     Ok(())
 }
