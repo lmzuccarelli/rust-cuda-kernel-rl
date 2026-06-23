@@ -17,8 +17,7 @@
   "rollout_start": 0,
   "flow_control": 0,
   "gpu_arch": 86,
-  "create_stats": false,
-  "use_error_vec": false
-
-
+  "create_stats": true,
+  "use_error_vec": false,
+  "exclude_trajectories": ["all"]
 }

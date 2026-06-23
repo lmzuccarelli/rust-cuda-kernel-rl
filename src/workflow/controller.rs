@@ -330,6 +330,12 @@ impl ControllerInterface for Controller {
             let mut vec_error_techniques: Vec<String> = vec![];
 
             for current_trajectory in trajectories.iter() {
+                // TODO: add a more elegant way to skip all trajectory runs
+                // not the neatest solution
+                if parameters.exclude_trajectories.contains(&"all".to_owned()) {
+                    break;
+                }
+
                 log::info!("[execute_agent_flow] trajectory   : {}", current_trajectory);
                 let &mut mut fallback = &mut false;
                 let mut plan_count = parameters.max_rollout - 1;

@@ -14,7 +14,7 @@
   "token_file": "/home/lzuccarelli/.cerebras/token",
   "openapi_url": "https://api.cerebras.ai/v1/chat/completions",
   "max_rollout": 10,
-  "rollout_start": 0,
+  "rollout_start": 10,
   "flow_control": 0,
   "gpu_arch": 86,
   "create_stats": true,
@@ -25,7 +25,10 @@
     "trajectory_3_xzdUlCN2",
     "trajectory_4_kRmwsXTK",
     "trajectory_5_M8XNlhtI",
-    "trajectory_6_xSHPxH5P"
+    "trajectory_6_xSHPxH5P",
+    "trajectory_7_itdSuSbC" ,
+    "trajectory_8_obG6NZ4S ",
+    "trajectory_9_2NeNsK63",
+    "trajectory_10_1jD13W1N"
   ]
-
 }
