@@ -53,10 +53,10 @@ The gpu service needs a gpu, this is where the compiled binary will be executed 
 
 ### Basic Flow 
 
-- The user will initiate a workflow via the various service endpoints (via a config file) using a json payload to indicate the kernel/s to be compiled, executed and profiled.
+- The user initiate's a workflow via the various service endpoints (via a config file) using a json payload to indicate the kernel/s to be compiled, executed and profiled.
 - The compiler process is used to compile the cuda-kernel/s.
-- The gpu process is used to get an initial baseline by executing the initial kernel and then profiling it using ncu for the *Elpased Cycles*.
-- The llm porcess will have all the results from the ncu insights (referencing the Speed of Light results), it uses a known database of problems and recommended optimisations with the cuda-kernel code as reference.
+- The gpu process is used to get an initial baseline by executing the kernel and then profiling it using **ncu** (Nvidia's profiler) for the *Elpased Cycles*.
+- The llm process is prompted with results from the ncu insights (referencing the Speed of Light results), the known database of problems and recommended optimisations with the cuda-kernel code as reference.
 - This process is repeated until the set trajectory value is reached (max_rollout) .
 - The trajectory with the best score (lowest Elapsed Cycles as a percentage from the baseline) will be saved together with the relevant cuda-kernel optimized code.
 - A simple workflow cli is used for the workflow controll.

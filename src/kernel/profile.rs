@@ -99,8 +99,10 @@ impl ProfileInterface for Profile {
         let re = Regex::new("[\\s]{4}Elapsed\\sCycles[\\s]+cycle[\\s]+([0-9,]*)")?;
         let mut elapsed_cycles = 0;
         for cap in re.captures_iter(&ncu_report) {
+            // we are only interested in the first Elapsed Cycles result in the file
             elapsed_cycles = cap[1].to_string().replace(",", "").parse::<i64>()?;
             log::trace!("[get_elapsed_cycles] {}", elapsed_cycles);
+            break;
         }
         Ok(elapsed_cycles)
     }
