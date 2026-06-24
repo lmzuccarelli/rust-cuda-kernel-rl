@@ -20,7 +20,16 @@
   "create_stats": false,
   "use_error_vec": true,
   "acceptance_threshold": 0.90,
+  "degradation_threshold": -15.0,
   "exclude_trajectories": [
-    "trajectory_1_Po9t6Fh_"
+    "trajectory_2_K19GXpZk",
+    "trajectory_3_BrYu92C9",
+    "trajectory_4_KVw6SYL-",
+    "trajectory_5_nWRq9otN",
+    "trajectory_6_IpBNGzCV",
+    "trajectory_7_lLUbkBO2",
+    "trajectory_8_L6x36i3-",
+    "trajectory_9_xuXxpkzW",
+    "trajectory_10_JherU9Ei"
   ]
 }

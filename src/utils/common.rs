@@ -164,18 +164,31 @@ pub fn pick_weighted(
     // first exclude plans that we know don't work
     plans.retain(|x| !exclude.contains(&x.technique));
 
+    // not used
     let weights = plans
         .clone()
         .iter()
         .map(|x| x.relevance_score.powi(3))
         .collect::<Vec<f32>>();
 
+    // sort by relevance_score
+    plans.sort_by(|a, b| {
+        b.relevance_score
+            .partial_cmp(&a.relevance_score)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+
     if weights.len() > 0 {
-        log::debug!("[pick_weighted] {:?}", weights);
+        log::trace!("[pick_weighted] {:?}", weights);
+
+        // not used
         let dist = WeightedIndex::new(weights)?;
         let mut rng = rand::rng();
         let index = dist.sample(&mut rng);
         log::trace!("[pick_weighted] using index {}", index);
+        // end not used
+
+        // use the first item (asc sorted)
         pick = plans[0].clone();
     }
     log::debug!("[pick_weighted] selecting technique : {}", pick.technique);

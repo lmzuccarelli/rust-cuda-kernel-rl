@@ -86,14 +86,29 @@ export LD_LIBRARY_PATH=/usr/local/cuda-<version>/lib64:/usr/local/cuda/extras/CU
 
 ## Troubleshooting
 
-### Manaully test cuda kernels
+### Manually test cuda kernels
 
-Use the following cli in the specific "trajectory_XXX/step_XXX/build" directory on the gpu server (base directory is "out")
+Use the following cli in the specific "trajectory_XXX/step_XXX/build" directory on the gpu server (base directory is "out") on the gpu server
 
 ```bash
 # change the GPU_ARCH_VERSION as needed
 cmake -DCMAKE_PREFIX_PATH=/usr/local/libtorch -DCMAKE_BUILD_TYPE=Release .. -DGPU_ARCH_VERSION=86
 
 cmake --build . --config Release
+```
+
+### Manually profile cuda kernels
+
+Look for the kernel name in file cuda_model.cu (search for __global__)
+
+Use the following cli to execute a profile
+
+```bash
+
+sudo LD_LIBRARY_PATH=${LD_LIBRARY_PATH} ncu --set full -k <kernel-name> -o profile-<kernel-name> -f main
+
+# convert to text format
+sudo LD_LIBRARY_PATH=${LD_LIBRARY_PATH} ncu --import profile-<kernel-name>.ncu-rep --page details
+
 ```
 

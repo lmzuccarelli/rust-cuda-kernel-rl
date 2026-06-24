@@ -122,7 +122,7 @@ impl ProfileInterface for Profile {
         let mut reward = (baseline - current) as f64 / baseline as f64;
         if reward < 0.0 {
             // add penalty for being worse
-            reward += -0.5
+            reward += -0.1
         }
         let result = reward * 100.0;
         Ok((result, reward))
