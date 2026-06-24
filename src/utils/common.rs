@@ -154,13 +154,12 @@ pub fn find_most_performant_kernel(base_dir: String) -> Result<(), Box<dyn std::
 pub fn pick_weighted(
     mut plans: Vec<OptimizationPlan>,
     exclude: Vec<String>,
+    current_best_plan: String,
 ) -> Result<OptimizationPlan, Box<dyn std::error::Error>> {
-    // TODO: This was set due to high reward values
-    // it could change from kernel to kernel
     let mut pick = OptimizationPlan {
-        technique: "memory_coalescing_optimization".to_string(),
+        technique: current_best_plan,
         relevance_score: 0.9,
-        description: "Align access patterns to cache lines".to_string(),
+        description: "".to_string(),
     };
     // first exclude plans that we know don't work
     plans.retain(|x| !exclude.contains(&x.technique));
@@ -170,17 +169,16 @@ pub fn pick_weighted(
         .iter()
         .map(|x| x.relevance_score.powi(3))
         .collect::<Vec<f32>>();
+
     if weights.len() > 0 {
         log::debug!("[pick_weighted] {:?}", weights);
         let dist = WeightedIndex::new(weights)?;
         let mut rng = rand::rng();
         let index = dist.sample(&mut rng);
-        log::debug!("[pick_weighted] using index {}", index);
-        //pick = plans[index].clone();
+        log::trace!("[pick_weighted] using index {}", index);
         pick = plans[0].clone();
-    } else {
-        log::debug!("[pick_weighted] using default {}", pick.technique);
     }
+    log::debug!("[pick_weighted] selecting technique : {}", pick.technique);
     Ok(pick)
 }
 
@@ -224,10 +222,13 @@ pub fn find_cuda_file(
             cuda_kernel = contents.chars().filter(|c| c.is_ascii()).collect();
             cuda_file = "init.cu".to_string();
         } else {
+            log::debug!("[find_cuda_file] current directory : {}", dir);
             log::debug!("[find_cuda_file] fallback using : {}", fallback_kernel);
             let contents = fs::read_to_string(&fallback_kernel)?;
             cuda_file = fallback_kernel.split("/").last().unwrap_or("").to_string();
             cuda_kernel = contents.chars().filter(|c| c.is_ascii()).collect();
+            log::debug!("[find_cuda_file] copying fallback kernel");
+            fs::copy(fallback_kernel, format!("{}/{}", dir, cuda_file))?;
         }
         *fallback = false;
     }

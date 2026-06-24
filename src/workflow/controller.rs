@@ -215,7 +215,7 @@ impl ControllerInterface for Controller {
                 let category = Profile::get_category(state)?;
                 // let mut futs = FuturesUnordered::new();
                 for x in 0..parameters.max_rollout {
-                    let plan = pick_weighted(plans.clone(), vec![])?;
+                    let plan = pick_weighted(plans.clone(), vec![], "".to_owned())?;
                     // Generate a shorter 8-character ID (6 bytes)
                     let short = short_id_with_bytes(6)?;
                     let trajectory_dir = format!(
@@ -380,8 +380,8 @@ impl ControllerInterface for Controller {
                                     "[execute_agent_flow] failed to create directory : {}",
                                     e
                                 );
-                                fallback = true;
-                                continue;
+                                // this is a critical error
+                                break;
                             }
                         }
                     }
@@ -393,91 +393,86 @@ impl ControllerInterface for Controller {
                     let mut payload = String::new();
                     let mut code = String::new();
                     let mut cuda_kernel_file = String::new();
-                    let mut retry_flag = false;
 
-                    // compile retry is hard coded to 2
-                    'retry: for i in 0..2 {
-                        if i == 1 {
-                            retry_flag = true;
+                    // 1. read kernel code
+                    // If for any reason the cuda kernel file cannot be read exit immediately
+                    if fallback {
+                        log::trace!("{payload}");
+                        log::trace!("{code}");
+                        log::trace!("{cuda_kernel_file}");
+                        log::warn!("[execute_agent_flow] fallback set");
+                    }
+                    let (cuda_file, kernel_code) = find_cuda_file(
+                        local_target_dir.clone(),
+                        track_fallback_kernel.clone(),
+                        &mut fallback,
+                    )?;
+                    log::info!("[execute_agent_flow] using kernel file : {}", cuda_file);
+                    log::info!("[execute_agent_flow] using path : {}", local_target_dir);
+                    payload = format!(
+                        r##"{{ "name": "{}", "working_dir": "{}", "gpu_arch": "{}" , "target_dir": "{}", "kernel_name": "{}" , "code": {:?} }}"##,
+                        item,
+                        parameters.working_dir,
+                        parameters.gpu_arch,
+                        target_dir,
+                        cuda_file,
+                        kernel_code
+                    );
+
+                    // 2. upload kernel
+                    log::info!("[execute_agent_flow] uploading kernel : {}", cuda_file);
+                    let url = format!("{}/v1/upload", parameters.compile_server_url);
+                    let upload_res = process_post_call(None, url.clone(), payload.clone()).await;
+                    match upload_res {
+                        Ok(_) => {
+                            log::info!("[execute_agent_flow] kernel uploaded successfully");
                         }
-
-                        // 1. read kernel code
-                        // If for any reason the cuda kernel file cannot be read exit immediately
-                        log::warn!("[execute_agent_flow] compile retry loop {}", i);
-                        let (cuda_file, kernel_code) = find_cuda_file(
-                            local_target_dir.clone(),
-                            track_fallback_kernel.clone(),
-                            &mut fallback,
-                        )?;
-                        log::info!("[execute_agent_flow] using kernel file : {}", cuda_file);
-                        log::info!("[execute_agent_flow] using path : {}", local_target_dir);
-                        payload = format!(
-                            r##"{{ "name": "{}", "working_dir": "{}", "gpu_arch": "{}" , "target_dir": "{}", "kernel_name": "{}" , "code": {:?} }}"##,
-                            item,
-                            parameters.working_dir,
-                            parameters.gpu_arch,
-                            target_dir,
-                            cuda_file,
-                            kernel_code
-                        );
-
-                        // 2. upload kernel
-                        log::info!("[execute_agent_flow] uploading kernel : {}", cuda_file);
-                        let url = format!("{}/v1/upload", parameters.compile_server_url);
-                        let upload_res =
-                            process_post_call(None, url.clone(), payload.clone()).await;
-                        match upload_res {
-                            Ok(_) => {
-                                log::info!("[execute_agent_flow] kernel uploaded successfully");
-                            }
-                            Err(e) => {
-                                log::error!("[execute_agent_flow] kernel upload error {}", e);
-                                fallback = true;
-                                continue;
-                            }
+                        Err(e) => {
+                            log::error!("[execute_agent_flow] kernel upload error {}", e);
+                            fallback = true;
+                            continue;
                         }
+                    }
 
-                        // 3. compile kernel
-                        log::info!("[execute_agent_flow] calling compile cuda kernel endpoint",);
-                        let url = format!("{}/v1/compile", parameters.compile_server_url);
-                        let file_name = format!("{}/compile.txt", local_target_dir);
-                        let res = process_post_call(Some(file_name), url, payload.clone()).await;
-                        match res {
-                            Ok(_) => {
-                                log::info!(
-                                    "[execute_agent_flow] compile kernel completed successfully"
-                                );
-                                code = kernel_code;
-                                cuda_kernel_file = cuda_file;
-                                log::info!(
-                                    "[execute_agent_flow] setting cuda kernel : {}",
-                                    cuda_kernel_file
-                                );
-                                // compilation succeeded move on to the next workflow step
-                                break 'retry;
-                            }
-                            Err(e) => {
-                                log::error!("[execute_agent_flow] compile failed {}", e);
-                                if parameters.use_error_vec {
-                                    let technique = cuda_file
-                                        .clone()
-                                        .split(".cu")
-                                        .next()
-                                        .unwrap_or("none")
-                                        .to_owned();
+                    // 3. compile kernel
+                    log::info!("[execute_agent_flow] calling compile cuda kernel endpoint",);
+                    let url = format!("{}/v1/compile", parameters.compile_server_url);
+                    let file_name = format!("{}/compile.txt", local_target_dir);
+                    let res = process_post_call(Some(file_name), url, payload.clone()).await;
+                    match res {
+                        Ok(_) => {
+                            log::info!(
+                                "[execute_agent_flow] compile kernel completed successfully"
+                            );
+                            code = kernel_code;
+                            cuda_kernel_file = cuda_file;
+                            log::info!(
+                                "[execute_agent_flow] setting cuda kernel : {}",
+                                cuda_kernel_file
+                            );
+                        }
+                        Err(e) => {
+                            log::error!("[execute_agent_flow] compile failed {}", e);
+                            if parameters.use_error_vec {
+                                let technique = cuda_file
+                                    .clone()
+                                    .split(".cu")
+                                    .next()
+                                    .unwrap_or("none")
+                                    .to_owned();
 
-                                    if !vec_error_techniques.contains(&technique) {
-                                        vec_error_techniques.push(technique);
-                                    }
+                                if !vec_error_techniques.contains(&technique) {
+                                    vec_error_techniques.push(technique);
                                 }
-                                fallback = true;
-                                continue;
                             }
+                            fallback = true;
+                            continue;
                         }
                     }
 
                     // the compile failed after 2 re-tries
                     if code.is_empty() {
+                        fallback = true;
                         continue;
                     }
 
@@ -568,7 +563,7 @@ impl ControllerInterface for Controller {
                     // setup fallback directory and cuda kernel if reward is higher than the
                     // tracking_max_reward, also dont update if we have detected that the
                     // improvement happend in the retry loop
-                    if reward > track_max_reward && !retry_flag {
+                    if reward > track_max_reward {
                         track_max_reward = reward;
                         track_fallback_kernel =
                             format!("{}/{}", local_target_dir, cuda_kernel_file);
@@ -592,6 +587,7 @@ impl ControllerInterface for Controller {
                                 vec_error_techniques.push(technique);
                             }
                         }
+                        fallback = true;
                         continue;
                     }
 
@@ -702,8 +698,16 @@ impl ControllerInterface for Controller {
                         step + 1
                     );
                     let category = Profile::get_category(state.clone())?;
-                    // pick the weighted plan should not fail (unless WeightedIndex fails - severe)
-                    let plan = pick_weighted(plans.clone(), vec_error_techniques.clone())?;
+                    let current_best_plan = track_fallback_kernel
+                        .split("/")
+                        .last()
+                        .unwrap_or("none")
+                        .to_owned();
+                    let plan = pick_weighted(
+                        plans.clone(),
+                        vec_error_techniques.clone(),
+                        current_best_plan,
+                    )?;
                     log::warn!("[execute_agent_flow] selected plan {} ", plan.technique);
                     log::warn!(
                         "[execute_agent_flow] exclude plans {:?}",
@@ -765,7 +769,7 @@ impl ControllerInterface for Controller {
                                         "[execute_agent_flow] saved cuda kernel {}",
                                         plan.technique
                                     );
-                                    plan_count -= 1;
+                                    // plan_count -= 1;
                                     // plan_count starts at max_rollout -1 and then decrements by one until we reach 4
                                     if plan_count <= 4 {
                                         plan_count = 4;
@@ -867,7 +871,7 @@ mod tests {
         println!();
 
         for _x in 0..3 {
-            let pick = pick_weighted(plans.clone(), vec![])?;
+            let pick = pick_weighted(plans.clone(), vec![], "".to_owned())?;
             println!(
                 "[execute_baseline_flow] testing weighted plan {} {}",
                 pick.technique, pick.relevance_score
