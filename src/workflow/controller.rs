@@ -344,7 +344,7 @@ impl ControllerInterface for Controller {
             // problematic (compilation, execution and/or profiling)
             let mut vec_error_techniques: Vec<String> = vec![];
 
-            for current_trajectory in trajectories.iter() {
+            'trajectories: for current_trajectory in trajectories.iter() {
                 if parameters.exclude_trajectories.contains(&"all".to_owned()) {
                     break;
                 }
@@ -637,7 +637,7 @@ impl ControllerInterface for Controller {
                                 "[execute_agent_flow] detected cuda kernel with reward > threshold {} exiting trajectories",
                                 cuda_kernel_file
                             );
-                            break;
+                            break 'trajectories;
                         }
                         flow_control = 8u8;
                     }

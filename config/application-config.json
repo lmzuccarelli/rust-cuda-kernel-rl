@@ -3,7 +3,7 @@
 	"log_level": "debug",
 	"gpu_server_url": "http://192.168.1.221:3202",
   "compile_server_url": "http://192.168.1.221:3201",
-  "llm_server_url": "http://192.168.1.208:3200",
+  "llm_server_url": "http://192.168.1.178:3200",
   "workflow_batch": [
     "level1/001_Square_matrix_multiplication"
   ],
@@ -19,8 +19,7 @@
   "gpu_arch": 86,
   "create_stats": true,
   "use_error_vec": true,
-  "acceptance_threshold": 0.92,
+  "acceptance_threshold": 0.94,
   "degradation_threshold": -15.0,
-  "exclude_trajectories": [
-  ]
+  "exclude_trajectories": ["trajectory_1_mINMOfqW"]
 }
