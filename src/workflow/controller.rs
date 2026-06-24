@@ -6,8 +6,8 @@ use crate::inference::prompts::{
 };
 use crate::kernel::profile::{Profile, ProfileInterface};
 use crate::utils::common::{
-    extract_code, extract_code_from_call, find_cuda_file, find_most_performant_kernel,
-    get_trajectories, pick_weighted,
+    clean_trajectories, extract_code, extract_code_from_call, find_cuda_file,
+    find_most_performant_kernel, get_trajectories, pick_weighted,
 };
 use crate::workflow::api_client::{process_get_call, process_post_call};
 use custom_logger as log;
@@ -27,6 +27,7 @@ pub trait ControllerInterface {
         paramaters: Parameters,
     ) -> Result<(), Box<dyn std::error::Error>>;
     async fn execute_agent_flow(paramaters: Parameters) -> Result<(), Box<dyn std::error::Error>>;
+    fn init(paramaters: Parameters) -> Result<(), Box<dyn std::error::Error>>;
 }
 
 pub struct Controller {}
@@ -39,6 +40,16 @@ pub struct OptimizationPlan {
 }
 
 impl ControllerInterface for Controller {
+    fn init(parameters: Parameters) -> Result<(), Box<dyn std::error::Error>> {
+        for item in parameters.workflow_batch.iter() {
+            clean_trajectories(format!(
+                "{}/logs/{}/{}/rl-ncu/",
+                parameters.working_dir, parameters.llm_model, item
+            ))?;
+        }
+        Ok(())
+    }
+
     async fn get_health(parameters: Parameters) -> Result<(), Box<dyn std::error::Error>> {
         // check compiler endpoint
         let res_compiler =
@@ -323,18 +334,17 @@ impl ControllerInterface for Controller {
                 trajectories_dir.clone(),
                 parameters.exclude_trajectories.clone(),
             )?;
+
+            // show all trajectories
             log::debug!("[execute_agent_flow] trajectories {:#?}", trajectories);
             let mut track_fallback_kernel: String = String::new();
             let mut track_max_reward = 0.0;
-            //let mut error_detected = false;
 
             // from previous execution we know these kernel optimization techniques are
             // problematic (compilation, execution and/or profiling)
             let mut vec_error_techniques: Vec<String> = vec![];
 
             for current_trajectory in trajectories.iter() {
-                // TODO: add a more elegant way to skip all trajectory runs
-                // not the neatest solution
                 if parameters.exclude_trajectories.contains(&"all".to_owned()) {
                     break;
                 }

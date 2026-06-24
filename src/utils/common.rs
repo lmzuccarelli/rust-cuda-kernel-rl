@@ -5,7 +5,6 @@ use rand::distr::weighted::WeightedIndex;
 use rand::prelude::*;
 use regex::Regex;
 use std::fs;
-use std::path::Path;
 use std::thread;
 use std::time::Duration;
 use walkdir::WalkDir;
@@ -21,66 +20,28 @@ pub fn extract_code(input: String) -> Result<String, Box<dyn std::error::Error>>
     Ok(result.to_string())
 }
 
-#[allow(unused)]
-pub async fn extract_code_all(
-    base_dir: String,
-    working_dir: String,
-    url: String,
-    gpu_arch: u8,
-) -> Result<(), Box<dyn std::error::Error>> {
+pub fn clean_trajectories(base_dir: String) -> Result<(), Box<dyn std::error::Error>> {
     for e in WalkDir::new(base_dir) {
         match e {
             Ok(obj) => {
                 if obj.path().is_file() {
-                    let file = obj.path().to_string_lossy();
-                    if file.contains("_llm_response.txt") {
-                        let contents_res = fs::read_to_string(file.to_string());
-                        match contents_res {
-                            Ok(contents) => {
-                                let code = extract_code(contents)?;
-                                if !code.is_empty() {
-                                    let file_name = obj
-                                        .file_name()
-                                        .to_string_lossy()
-                                        .replace("logs", "out")
-                                        .replace("_llm_response.txt", ".cu");
-                                    log::info!("file_name  : {}", file_name);
-                                    let target_dir = obj
-                                        .path()
-                                        .parent()
-                                        .unwrap_or(Path::new(""))
-                                        .to_string_lossy();
-                                    // write to local disk
-                                    let res = fs::write(
-                                        format!("{}/{}", target_dir, file_name),
-                                        code.clone(),
-                                    );
-                                    match res {
-                                        Ok(_) => log::debug!(
-                                            "[extract_code_all] file {} saved to local disk",
-                                            file_name
-                                        ),
-                                        Err(e) => log::error!("[extract_code_all] {}", e),
-                                    }
-                                    // prepare for upload
-                                    let payload = format!(
-                                        r##"{{ "name": "{}", "gpu_arch": "{}", "code": {:?} , "target_dir": "{}", "working_dir": "{}" }}"##,
-                                        file_name, gpu_arch, code, target_dir, working_dir
-                                    );
-                                    process_post_call(None, url.clone(), payload).await?;
-                                } else {
-                                    log::warn!("[extract_code_all] code not found {}", file);
-                                }
-                            }
-                            Err(e) => {
-                                log::error!("[extract_code_all] error reading {}", e);
-                            }
-                        }
+                    let file = obj.path().to_string_lossy().to_string();
+                    if (file.contains("trajectory_") && !file.contains("step_0"))
+                        && (!file.contains(".prompt") || !file.contains(".cu"))
+                    {
+                        log::trace!("[clean_trajectories] removing file {}", file);
+                        fs::remove_file(&file)?;
+                    }
+                    if (file.contains("trajectory_") && file.contains("step_0"))
+                        && (file.contains(".txt") || file.contains("json"))
+                    {
+                        log::debug!("[clean_trajectories] removing file {}", file);
+                        fs::remove_file(&file)?;
                     }
                 }
             }
             Err(e) => {
-                log::error!("[extract_code_all] error : {}", e);
+                log::error!("[clean_trajectories] error : {}", e);
             }
         }
     }

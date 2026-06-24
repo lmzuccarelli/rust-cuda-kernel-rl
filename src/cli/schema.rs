@@ -30,4 +30,6 @@ pub enum Commands {
     Compile {},
     /// cli workflow controller
     Controller {},
+    /// init
+    Init {},
 }

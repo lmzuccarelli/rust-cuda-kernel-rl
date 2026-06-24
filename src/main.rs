@@ -178,6 +178,7 @@ fn main() {
             ("compile".to_string(), parameters)
         }
         Some(Commands::Controller {}) => ("controller".to_string(), parameters),
+        Some(Commands::Init {}) => ("init".to_string(), parameters),
 
         None => {
             log::error!(
@@ -206,70 +207,76 @@ pub async fn execute(
     log::info!("author      : {}", env!("CARGO_PKG_AUTHORS"));
     log::info!("version     : {}", env!("CARGO_PKG_VERSION"));
     log::info!("server      : {}", command);
+    log::info!("model       : {}", parameters.llm_model);
 
-    // check if we are in workflow controller mode or launch service mode
-    if command == "controller" {
-        // only call health endpoints if we are not testing
-        Controller::get_health(parameters.clone()).await?;
-        match parameters.controller_mode {
-            ControllerMode::Baseline => {
-                Controller::execute_baseline_flow(parameters.clone()).await?;
-            }
-            ControllerMode::Agent => {
-                Controller::execute_agent_flow(parameters).await?;
+    match command.as_str() {
+        "init" => {
+            Controller::init(parameters)?;
+        }
+        "controller" => {
+            // only call health endpoints if we are not testing
+            Controller::get_health(parameters.clone()).await?;
+            match parameters.controller_mode {
+                ControllerMode::Baseline => {
+                    Controller::execute_baseline_flow(parameters.clone()).await?;
+                }
+                ControllerMode::Agent => {
+                    Controller::execute_agent_flow(parameters).await?;
+                }
             }
         }
-        Ok(())
-    } else {
-        let port = get_port(command.clone(), parameters)?;
-        log::info!("port        : {}", port);
-        println!();
-        let addr = SocketAddr::new(Ipv4Addr::new(0, 0, 0, 0).into(), port);
-        log::info!("[execute] starting to serve on http://{}", addr);
-        let listener = TcpListener::bind(addr).await?;
-        match command.as_str() {
-            "compile" => loop {
-                let (stream, _) = listener.accept().await?;
-                let io = TokioIo::new(stream);
-                tokio::task::spawn(async move {
-                    if let Err(err) = http1::Builder::new()
-                        .serve_connection(io, service_fn(compiler::endpoints))
-                        .await
-                    {
-                        log::error!("[execute] error serving connection: {:?}", err);
-                    }
-                });
-            },
-            "gpu" => loop {
-                let (stream, _) = listener.accept().await?;
-                let io = TokioIo::new(stream);
-                tokio::task::spawn(async move {
-                    if let Err(err) = http1::Builder::new()
-                        .serve_connection(io, service_fn(gpu::endpoints))
-                        .await
-                    {
-                        log::error!("[execute] error serving connection: {:?}", err);
-                    }
-                });
-            },
-            "llm" => loop {
-                let (stream, _) = listener.accept().await?;
-                let io = TokioIo::new(stream);
-                tokio::task::spawn(async move {
-                    if let Err(err) = http1::Builder::new()
-                        .serve_connection(io, service_fn(llm::endpoints))
-                        .await
-                    {
-                        log::error!("[execute] error serving connection: {:?}", err);
-                    }
-                });
-            },
-            &_ => {
-                log::error!("[execute] invalid service");
-                std::process::exit(1);
+        &_ => {
+            let port = get_port(command.clone(), parameters)?;
+            log::info!("port        : {}", port);
+            println!();
+            let addr = SocketAddr::new(Ipv4Addr::new(0, 0, 0, 0).into(), port);
+            log::info!("[execute] starting to serve on http://{}", addr);
+            let listener = TcpListener::bind(addr).await?;
+            match command.as_str() {
+                "compile" => loop {
+                    let (stream, _) = listener.accept().await?;
+                    let io = TokioIo::new(stream);
+                    tokio::task::spawn(async move {
+                        if let Err(err) = http1::Builder::new()
+                            .serve_connection(io, service_fn(compiler::endpoints))
+                            .await
+                        {
+                            log::error!("[execute] error serving connection: {:?}", err);
+                        }
+                    });
+                },
+                "gpu" => loop {
+                    let (stream, _) = listener.accept().await?;
+                    let io = TokioIo::new(stream);
+                    tokio::task::spawn(async move {
+                        if let Err(err) = http1::Builder::new()
+                            .serve_connection(io, service_fn(gpu::endpoints))
+                            .await
+                        {
+                            log::error!("[execute] error serving connection: {:?}", err);
+                        }
+                    });
+                },
+                "llm" => loop {
+                    let (stream, _) = listener.accept().await?;
+                    let io = TokioIo::new(stream);
+                    tokio::task::spawn(async move {
+                        if let Err(err) = http1::Builder::new()
+                            .serve_connection(io, service_fn(llm::endpoints))
+                            .await
+                        {
+                            log::error!("[execute] error serving connection: {:?}", err);
+                        }
+                    });
+                },
+                &_ => {
+                    log::error!("[execute] invalid service");
+                    std::process::exit(1);
+                }
             }
         }
     }
+    Ok(())
 }
 
 // utility
