@@ -226,7 +226,8 @@ impl ControllerInterface for Controller {
                 let category = Profile::get_category(state)?;
                 // let mut futs = FuturesUnordered::new();
                 for x in 0..parameters.max_rollout {
-                    let plan = pick_weighted(plans.clone(), vec![], "".to_owned())?;
+                    // let plan = pick_weighted(plans.clone(), vec![], "".to_owned())?;
+                    let plan = plans[x as usize].clone();
                     // Generate a shorter 8-character ID (6 bytes)
                     let short = short_id_with_bytes(6)?;
                     let trajectory_dir = format!(

@@ -5,32 +5,22 @@
   "compile_server_url": "http://192.168.1.221:3201",
   "llm_server_url": "http://192.168.1.208:3200",
   "workflow_batch": [
-    "level1/001_Square_matrix_multiplication"
+    "level1/010_3D_tensor_matrix_multiplication"
   ],
   "working_dir": "/home/lzuccarelli/Projects/rust-cuda-kernel-rl",
   "llm_agent": "Api",
   "llm_model": "gpt-oss-120b",
-  "controller_mode": "Agent",
+  "controller_mode": "Baseline",
   "token_file": "/home/lzuccarelli/.cerebras/token",
   "openapi_url": "https://api.cerebras.ai/v1/chat/completions",
   "max_rollout": 10,
   "rollout_start": 0,
-  "flow_control": 0,
+  "flow_control": 127,
   "gpu_arch": 86,
   "create_stats": true,
   "use_error_vec": true,
   "acceptance_threshold": 0.80,
   "degradation_threshold": -15.0,
   "exclude_trajectories": [
-    "trajectory_1_Po9t6Fh_",
-    "trajectory_2_K19GXpZk",
-    "trajectory_3_BrYu92C9",
-    "trajectory_4_KVw6SYL-",
-    "trajectory_5_nWRq9otN",
-    "trajectory_6_IpBNGzCV",
-    "trajectory_7_lLUbkBO2",
-    "trajectory_8_L6x36i3-",
-    "trajectory_9_xuXxpkzW",
-    "trajectory_10_JherU9Ei"
   ]
 }

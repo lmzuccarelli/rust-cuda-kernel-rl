@@ -32,7 +32,7 @@ impl CompileInterface for Compile {
         // we use regex to extract it
         let content =
             fs::read_to_string(format!("kernelbench-cuda/{}/driver.cpp", work_item.name))?;
-        let re = Regex::new("(void launch_gpu_implementation\\([\\n\\s,\\/\\(\\)a-zA-Z0-9*_]*;)")?;
+        let re = Regex::new("(void launch_gpu_implementation\\([a-zA-Z0-9,_()\\s\\/\\.\\*-]*;)")?;
         for cap in re.captures_iter(&content) {
             fs::write(
                 format!("{}/cuda_model.cuh", work_item.target_dir),
