@@ -26,17 +26,23 @@ pub fn clean_trajectories(base_dir: String) -> Result<(), Box<dyn std::error::Er
             Ok(obj) => {
                 if obj.path().is_file() {
                     let file = obj.path().to_string_lossy().to_string();
-                    if (file.contains("trajectory_") && !file.contains("step_0"))
-                        && (!file.contains(".prompt") || !file.contains(".cu"))
+                    // don't delete .prompt and .cu files
+                    if (file.contains("trajectory_") && file.contains("step_0"))
+                        && (file.contains(".txt") || file.contains("json"))
                     {
                         log::trace!("[clean_trajectories] removing file {}", file);
                         fs::remove_file(&file)?;
                     }
-                    if (file.contains("trajectory_") && file.contains("step_0"))
-                        && (file.contains(".txt") || file.contains("json"))
+                }
+                // remove all step directories greater than 0
+                if obj.path().is_dir() {
+                    let dir = obj.path().to_string_lossy().to_string();
+                    if dir.contains("trajectory_")
+                        && dir.contains("step_")
+                        && !dir.contains("step_0")
                     {
-                        log::debug!("[clean_trajectories] removing file {}", file);
-                        fs::remove_file(&file)?;
+                        log::debug!("[clean_trajectories] removing directories {}", dir);
+                        fs::remove_dir_all(&dir)?;
                     }
                 }
             }
