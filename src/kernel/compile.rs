@@ -56,6 +56,7 @@ impl CompileInterface for Compile {
         let res = kernel.rfind("#include").unwrap_or(0);
         let insert = "#include \"cuda_model.cuh\"\n";
         kernel.insert_str(res, insert);
+        kernel.insert_str(res, "#include <stdio.h>\n");
         fs::write(format!("{}/cuda_model.cu", work_item.target_dir), &kernel)?;
 
         // copy CMakeLists.txt
